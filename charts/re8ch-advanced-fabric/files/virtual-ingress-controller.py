@@ -162,12 +162,36 @@ def route_ready(route):
     return False
 
 
+def owned_by_source_ingress(existing, desired):
+    """Allow safe takeover when the exact source Ingress already owns the route.
+
+    Earlier controller identities may have used another managed-label prefix.
+    Kubernetes owner references provide the stable migration boundary: a route
+    is adoptable only when its controller owner is the same Ingress UID that
+    the desired translation names.
+    """
+    if existing.get("metadata", {}).get("labels", {}).get(MANAGED_LABEL) == "true":
+        return True
+    desired_owners = desired.get("metadata", {}).get("ownerReferences", [])
+    if len(desired_owners) != 1:
+        return False
+    source = desired_owners[0]
+    return any(
+        owner.get("controller") is True
+        and owner.get("apiVersion") == source.get("apiVersion")
+        and owner.get("kind") == source.get("kind")
+        and owner.get("name") == source.get("name")
+        and owner.get("uid") == source.get("uid")
+        for owner in existing.get("metadata", {}).get("ownerReferences", [])
+    )
+
+
 def upsert_route(route):
     namespace, name = route["metadata"]["namespace"], route["metadata"]["name"]
     path = f"/apis/gateway.networking.k8s.io/v1/namespaces/{namespace}/httproutes/{name}"
     try:
         existing = request("GET", path)
-        if existing.get("metadata", {}).get("labels", {}).get(MANAGED_LABEL) != "true":
+        if not owned_by_source_ingress(existing, route):
             raise ValueError(f"HTTPRoute {namespace}/{name} exists and is not owned by this controller")
         return request("PATCH", path, route)
     except urllib.error.HTTPError as exc:

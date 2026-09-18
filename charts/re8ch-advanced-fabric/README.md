@@ -42,6 +42,11 @@ reported on the Ingress annotation
 after the Gateway reports both `Accepted=True` and `ResolvedRefs=True` for its
 generated HTTPRoute.
 
+Controller identity migrations are safe and idempotent: an existing generated
+HTTPRoute may be adopted without deletion only when its controller owner
+reference matches the exact source Ingress name and UID. A route with no owner,
+another resource owner, or a stale Ingress UID remains rejected.
+
 ## RouterOS eBGP boundary
 
 `RouterOSNode.networking.advfab.org/v1alpha2` models RouterOS as an acceleration
