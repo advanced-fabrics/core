@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.0.0-rc.3
+
+- Sign the immutable OCI chart digest using the registry credential store
+  shared by the release workflow and Cosign.
+
 ## 1.0.0-rc.2
 
 - Add checksum-bound, state-reconciled Linux routing-policy rules so selected
