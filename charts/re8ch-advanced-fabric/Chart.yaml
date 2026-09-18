@@ -2,8 +2,8 @@ apiVersion: v2
 name: advanced-fabric
 description: Public, observe-first Cilium and FRR fabric control and network evidence API
 type: application
-version: 1.0.0-rc.1
-appVersion: "1.0.0-rc.1"
+version: 1.0.0-rc.2
+appVersion: "1.0.0-rc.2"
 kubeVersion: ">=1.30.0-0"
 home: https://advfab.org
 sources:
@@ -21,6 +21,8 @@ annotations:
   artifacthub.io/operatorCapabilities: deep insights
   artifacthub.io/containsSecurityUpdates: "false"
   artifacthub.io/changes: |
+    - kind: added
+      description: Add generic checksum-bound routing-policy rules for stable control-plane paths ahead of broad dynamic ECMP policy.
     - kind: fixed
       description: Prefer complete synchronized coordinate slices during deterministic relationship downsampling so valid closed curves are not displaced by older partial evidence.
     - kind: fixed
