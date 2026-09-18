@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.0.0-rc.5
+
+- Add a generic placement and availability contract for the stateless virtual
+  Ingress controller: replica count, PodDisruptionBudget, node selector,
+  affinity, tolerations, topology spread, and bounded rolling updates.
+
 ## 1.0.0-rc.4
 
 - Allow the virtual Ingress controller to adopt and reconcile a generated

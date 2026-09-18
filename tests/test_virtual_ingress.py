@@ -18,6 +18,15 @@ def ingress(annotations=None, path_type="Prefix"):
 
 
 class VirtualIngressTest(unittest.TestCase):
+    def test_chart_exposes_virtual_ingress_placement_and_disruption_contract(self):
+        template = (SCRIPT.parents[1] / "templates/virtual-ingress.yaml").read_text()
+        values = (SCRIPT.parents[1] / "values.yaml").read_text()
+        for field in ("replicas", "pdbMinAvailable", "nodeSelector", "affinity",
+                      "tolerations", "topologySpreadConstraints"):
+            self.assertIn(field, template)
+            self.assertIn(field + ":", values)
+        self.assertIn("maxUnavailable: 1, maxSurge: 0", template)
+
     def test_runtime_rbac_can_read_the_adoption_gateway(self):
         runtime = (SCRIPT.parents[1] / "templates/advanced-fabric-runtime.yaml").read_text()
         self.assertIn("resources: [gateways]", runtime)
