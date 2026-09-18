@@ -18,8 +18,8 @@ apiVersion: apps/v1
 kind: Deployment
 metadata: {name: advanced-fabric-virtual-ingress, namespace: kube-system}
 spec:
-  replicas: 1
-  strategy: {type: Recreate}
+  replicas: {{ .Values.advancedFabric.virtualIngress.replicas }}
+  strategy: {type: RollingUpdate, rollingUpdate: {maxUnavailable: 1, maxSurge: 0}}
   selector: {matchLabels: {app.kubernetes.io/name: advanced-fabric-virtual-ingress}}
   template:
     metadata:
@@ -28,6 +28,22 @@ spec:
     spec:
       serviceAccountName: advanced-fabric
       priorityClassName: system-cluster-critical
+{{- with .Values.advancedFabric.virtualIngress.nodeSelector }}
+      nodeSelector:
+{{ toYaml . | indent 8 }}
+{{- end }}
+{{- with .Values.advancedFabric.virtualIngress.affinity }}
+      affinity:
+{{ toYaml . | indent 8 }}
+{{- end }}
+{{- with .Values.advancedFabric.virtualIngress.tolerations }}
+      tolerations:
+{{ toYaml . | indent 8 }}
+{{- end }}
+{{- with .Values.advancedFabric.virtualIngress.topologySpreadConstraints }}
+      topologySpreadConstraints:
+{{ toYaml . | indent 8 }}
+{{- end }}
       containers:
         - name: controller
           image: python:3.13-alpine@sha256:540c7d91f98ff6880174c40e99067bf5941eb54d818a7a5e094d188b196a934d
@@ -46,4 +62,13 @@ spec:
           resources: {requests: {cpu: 10m, memory: 24Mi}, limits: {cpu: 100m, memory: 64Mi}}
           volumeMounts: [{name: runtime, mountPath: /runtime, readOnly: true}, {name: tmp, mountPath: /tmp}]
       volumes: [{name: runtime, configMap: {name: advanced-fabric-virtual-ingress, defaultMode: 365}}, {name: tmp, emptyDir: {}}]
+{{- if gt (int .Values.advancedFabric.virtualIngress.pdbMinAvailable) 0 }}
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata: {name: advanced-fabric-virtual-ingress, namespace: kube-system}
+spec:
+  minAvailable: {{ .Values.advancedFabric.virtualIngress.pdbMinAvailable }}
+  selector: {matchLabels: {app.kubernetes.io/name: advanced-fabric-virtual-ingress}}
+{{- end }}
 {{- end }}

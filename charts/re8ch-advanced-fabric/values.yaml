@@ -69,6 +69,12 @@ advancedFabric:
   # Gateway API HTTPRoutes. No proxy or Traefik-compatible data plane is run.
   virtualIngress:
     enabled: false
+    replicas: 1
+    pdbMinAvailable: 0
+    nodeSelector: {}
+    affinity: {}
+    tolerations: []
+    topologySpreadConstraints: []
     className: advanced-fabric
     gateway: {name: "", namespace: "", sectionName: http}
     publicAddress: ""

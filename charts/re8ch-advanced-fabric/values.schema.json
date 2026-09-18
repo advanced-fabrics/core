@@ -58,6 +58,12 @@
           "required": ["enabled", "className", "gateway", "publicAddress", "reconcileIntervalSeconds", "adoption"],
           "properties": {
             "enabled": {"type": "boolean"},
+            "replicas": {"type": "integer", "minimum": 1},
+            "pdbMinAvailable": {"type": "integer", "minimum": 0},
+            "nodeSelector": {"type": "object", "additionalProperties": {"type": "string"}},
+            "affinity": {"type": "object"},
+            "tolerations": {"type": "array", "items": {"type": "object"}},
+            "topologySpreadConstraints": {"type": "array", "items": {"type": "object"}},
             "className": {"type": "string", "pattern": "^[a-z0-9]([-a-z0-9]*[a-z0-9])?$"},
             "gateway": {
               "type": "object",

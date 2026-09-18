@@ -47,6 +47,11 @@ HTTPRoute may be adopted without deletion only when its controller owner
 reference matches the exact source Ingress name and UID. A route with no owner,
 another resource owner, or a stale Ingress UID remains rejected.
 
+The stateless compatibility controller exposes replica, disruption-budget,
+node-selector, affinity, toleration, and topology-spread values. Multiple
+replicas reconcile the same deterministic desired route and can be separated
+across independent failure domains without changing request routing.
+
 ## RouterOS eBGP boundary
 
 `RouterOSNode.networking.advfab.org/v1alpha2` models RouterOS as an acceleration
