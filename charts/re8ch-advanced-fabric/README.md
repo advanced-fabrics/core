@@ -65,7 +65,12 @@ accelerated host/FRR domain. Eligible nodes probe their local kube-apiserver
 state and CR status. Guarded apply requires a checksum-bound per-node
 transaction. `guardedNodes` limits VIP ownership during canary rollout;
 `nodeOperations` declares only exact fallback routes, WireGuard interfaces,
-FRR export prefix lists and source-identity rules. Source-identity rules preserve
+FRR export prefix lists, routing-policy rules and source-identity rules.
+Routing-policy rules let a node keep long-lived control-plane flows on a stable
+routing table ahead of broader ECMP policy. Each rule owns its declared Linux
+rule priority and requires a destination CIDR, TCP or UDP protocol, destination
+port (or range), and lookup table; removed rules are reconciled from persistent
+agent state. Source-identity rules preserve
 the node-owned accelerated address through an encrypted underlay, so mutual TLS
 peers do not observe a WireGuard transport address. The agent authenticates the local `/readyz` check and
 withdraws BGP before removing the loopback address.

@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.0.0-rc.2
+
+- Add checksum-bound, state-reconciled Linux routing-policy rules so selected
+  control-plane flows can bypass a broader dynamic ECMP policy without
+  hard-coding a provider, cluster, node, or control-plane implementation.
+
 ## 0.26.2
 
 - Prefer complete synchronized relationship slices during deterministic

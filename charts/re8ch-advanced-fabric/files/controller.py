@@ -789,6 +789,7 @@ def make_api_transaction(node, api, operations, guarded):
         "wireguardPeerPolicies": operations.get("wireguardPeerPolicies", []),
         "forwardRules": operations.get("forwardRules", []),
         "sourceIdentityRules": operations.get("sourceIdentityRules", []),
+        "routingPolicyRules": operations.get("routingPolicyRules", []),
         "fallbackRoutes": operations.get("fallbackRoutes", []),
     }
     canonical = json.dumps(spec, sort_keys=True, separators=(",", ":"))

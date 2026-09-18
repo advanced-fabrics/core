@@ -91,7 +91,14 @@ validate_transaction() {
   [ "${actual}" = "${expected}" ]
   transaction | jq -e --arg node "${NODE_NAME}" '.version == 1 and .node == $node and
     (.vip | test("^10\\.250\\.0\\.[0-9]{1,3}/32$")) and .vipInterface == "lo" and
-    (.frrPrefixSequence >= 1 and .frrPrefixSequence <= 999)' >/dev/null
+    (.frrPrefixSequence >= 1 and .frrPrefixSequence <= 999) and
+    all(.routingPolicyRules[]?;
+      (.priority | type == "number" and floor == . and . >= 1 and . <= 32765) and
+      (.destination | type == "string" and test("^[0-9]{1,3}(\\.[0-9]{1,3}){3}/(3[0-2]|[12]?[0-9])$")) and
+      (.protocol == "tcp" or .protocol == "udp") and
+      (.destinationPort | type == "string" and test("^[0-9]{1,5}(-[0-9]{1,5})?$")) and
+      ((.table | type == "number" and floor == . and . >= 1 and . <= 4294967295) or
+       (.table | type == "string" and test("^[A-Za-z0-9_.-]+$"))))' >/dev/null
 }
 manage_fallback_routes() {
   action=$1
@@ -184,6 +191,37 @@ manage_source_identity_rules() {
   done || return 1
   host nft add chain ip "${table}" "${marker}"
 }
+manage_routing_policy_rules() {
+  action=$1
+  state=/host/var/lib/advanced-fabric/routing-policy-rules.json
+  desired=$(transaction | jq -c '.routingPolicyRules // []')
+  current='[]'; [ ! -s "${state}" ] || current=$(cat "${state}")
+  printf '%s' "${current}" | jq -c '.[]?' | while read -r rule; do
+    if [ "${action}" = apply ] && printf '%s' "${desired}" | jq -e --argjson rule "${rule}" 'index($rule) != null' >/dev/null; then continue; fi
+    priority=$(printf '%s' "${rule}" | jq -r '.priority')
+    while host ip rule del priority "${priority}" 2>/dev/null; do :; done
+  done
+  if [ "${action}" != apply ]; then
+    rm -f "${state}"
+    return
+  fi
+  printf '%s' "${desired}" | jq -c '.[]?' | while read -r rule; do
+    priority=$(printf '%s' "${rule}" | jq -r '.priority'); destination=$(printf '%s' "${rule}" | jq -r '.destination')
+    protocol=$(printf '%s' "${rule}" | jq -r '.protocol'); port=$(printf '%s' "${rule}" | jq -r '.destinationPort')
+    table=$(printf '%s' "${rule}" | jq -r '.table')
+    actual=$(host ip rule show priority "${priority}")
+    if printf '%s\n' "${actual}" | grep -Fq "to ${destination}" &&
+       printf '%s\n' "${actual}" | grep -Fq "ipproto ${protocol}" &&
+       printf '%s\n' "${actual}" | grep -Fq "dport ${port}" &&
+       printf '%s\n' "${actual}" | grep -Fq "lookup ${table}"; then continue; fi
+    # A declared priority is owned by this transaction. Replace any drift at
+    # that priority, then install the exact selector before broad policy rules.
+    while host ip rule del priority "${priority}" 2>/dev/null; do :; done
+    host ip rule add priority "${priority}" to "${destination}" ipproto "${protocol}" dport "${port}" lookup "${table}"
+  done || return 1
+  mkdir -p "$(dirname "${state}")"
+  printf '%s\n' "${desired}" >"${state}.tmp"; mv "${state}.tmp" "${state}"
+}
 manage_frr_import_prefixes() {
   vip=$(transaction | jq -r '.vip')
   sequence=$(transaction | jq -r '.frrImportPrefixSequence')
@@ -251,7 +289,7 @@ while :; do
   else
     validate_transaction
     host systemctl is-active --quiet frr
-    manage_fallback_routes apply; manage_wireguard_allowed_ips apply; manage_wireguard_peer_policies apply; manage_frr_transit_prefixes apply; manage_forward_rules apply; manage_source_identity_rules apply; manage_frr_import_prefixes; manage_frr_neighbor_policies
+    manage_fallback_routes apply; manage_routing_policy_rules apply; manage_wireguard_allowed_ips apply; manage_wireguard_peer_policies apply; manage_frr_transit_prefixes apply; manage_forward_rules apply; manage_source_identity_rules apply; manage_frr_import_prefixes; manage_frr_neighbor_policies
     if [ "${guarded}" != true ]; then withdraw_vip; successes=0; failures=0; announced=false
     elif api_healthy; then
       successes=$((successes + 1)); failures=0; threshold=$(jq -r '.controlPlaneApi.healthCheck.successThreshold' "${NODE_FILE}")

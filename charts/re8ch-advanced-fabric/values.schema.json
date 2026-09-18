@@ -167,7 +167,16 @@
             "mode": {"const": "healthy-ecmp"},
             "eligibleNodes": {"type": "array", "uniqueItems": true, "items": {"type": "string", "minLength": 1}},
             "guardedNodes": {"type": "array", "uniqueItems": true, "items": {"type": "string", "minLength": 1}},
-            "nodeOperations": {"type": "array", "items": {"type": "object", "required": ["name"], "properties": {"name": {"type": "string", "minLength": 1}}}},
+            "nodeOperations": {"type": "array", "items": {"type": "object", "required": ["name"], "properties": {
+              "name": {"type": "string", "minLength": 1},
+              "routingPolicyRules": {"type": "array", "uniqueItems": true, "items": {"type": "object", "additionalProperties": false, "required": ["priority", "destination", "protocol", "destinationPort", "table"], "properties": {
+                "priority": {"type": "integer", "minimum": 1, "maximum": 32765},
+                "destination": {"type": "string", "pattern": "^[0-9]{1,3}(\\.[0-9]{1,3}){3}/(3[0-2]|[12]?[0-9])$"},
+                "protocol": {"enum": ["tcp", "udp"]},
+                "destinationPort": {"type": "string", "pattern": "^[0-9]{1,5}(-[0-9]{1,5})?$"},
+                "table": {"oneOf": [{"type": "integer", "minimum": 1, "maximum": 4294967295}, {"type": "string", "pattern": "^[A-Za-z0-9_.-]+$"}]}
+              }}}
+            }}},
             "primaryTransport": {"const": "wireguard"},
             "fallbackTransport": {"const": "zerotier"},
             "healthCheck": {
