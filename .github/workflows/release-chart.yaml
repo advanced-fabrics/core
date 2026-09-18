@@ -24,12 +24,23 @@ jobs:
         run: echo "$GITHUB_TOKEN" | helm registry login ghcr.io --username "$GITHUB_ACTOR" --password-stdin
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      - run: helm push dist/advanced-fabric-*.tgz oci://ghcr.io/advanced-fabrics/charts
+      - name: Push immutable chart
+        id: push
+        run: |
+          output=$(helm push dist/advanced-fabric-*.tgz oci://ghcr.io/advanced-fabrics/charts)
+          printf '%s\n' "$output"
+          digest=$(printf '%s\n' "$output" | awk '$1 == "Digest:" {print $2}')
+          [[ "$digest" =~ ^sha256:[0-9a-f]{64}$ ]]
+          echo "digest=$digest" >> "$GITHUB_OUTPUT"
+      - uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
       - uses: sigstore/cosign-installer@v3
       - name: Sign immutable chart release
-        env:
-          VERSION: ${{ github.ref_name }}
-        run: cosign sign --yes "ghcr.io/advanced-fabrics/charts/advanced-fabric:${VERSION#v}"
+        env: {DIGEST: '${{ steps.push.outputs.digest }}'}
+        run: cosign sign --yes "ghcr.io/advanced-fabrics/charts/advanced-fabric@$DIGEST"
       - uses: anchore/sbom-action@v0
         with:
           path: dist
