@@ -62,3 +62,24 @@ class VirtualIngressTest(unittest.TestCase):
         self.assertTrue(module.route_ready(route))
         route["status"]["parents"][0]["conditions"][1]["status"] = "False"
         self.assertFalse(module.route_ready(route))
+
+    def test_accepts_route_owned_by_exact_source_ingress_during_controller_migration(self):
+        desired = module.translate(ingress())
+        existing = {"metadata": {"ownerReferences": [{
+            "apiVersion": "networking.k8s.io/v1", "kind": "Ingress",
+            "name": "studio", "uid": "uid-1", "controller": True
+        }]}}
+        self.assertTrue(module.owned_by_source_ingress(existing, desired))
+
+    def test_rejects_route_owned_by_different_ingress_uid(self):
+        desired = module.translate(ingress())
+        existing = {"metadata": {"ownerReferences": [{
+            "apiVersion": "networking.k8s.io/v1", "kind": "Ingress",
+            "name": "studio", "uid": "recreated-uid", "controller": True
+        }]}}
+        self.assertFalse(module.owned_by_source_ingress(existing, desired))
+
+    def test_managed_label_remains_valid_owner_signal(self):
+        desired = module.translate(ingress())
+        existing = {"metadata": {"labels": {module.MANAGED_LABEL: "true"}}}
+        self.assertTrue(module.owned_by_source_ingress(existing, desired))

@@ -2,8 +2,8 @@ apiVersion: v2
 name: advanced-fabric
 description: Public, observe-first Cilium and FRR fabric control and network evidence API
 type: application
-version: 1.0.0-rc.3
-appVersion: "1.0.0-rc.3"
+version: 1.0.0-rc.4
+appVersion: "1.0.0-rc.4"
 kubeVersion: ">=1.30.0-0"
 home: https://advfab.org
 sources:
@@ -21,6 +21,8 @@ annotations:
   artifacthub.io/operatorCapabilities: deep insights
   artifacthub.io/containsSecurityUpdates: "false"
   artifacthub.io/changes: |
+    - kind: fixed
+      description: Safely adopt a generated HTTPRoute across controller identity migrations when the exact source Ingress remains its controller owner.
     - kind: fixed
       description: Publish and sign the immutable OCI chart digest through a shared registry credential store.
     - kind: added

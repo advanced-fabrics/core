@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.0.0-rc.4
+
+- Allow the virtual Ingress controller to adopt and reconcile a generated
+  HTTPRoute across controller identity migrations only when its controller
+  owner reference matches the exact source Ingress UID.
+
 ## 1.0.0-rc.3
 
 - Sign the immutable OCI chart digest using the registry credential store
