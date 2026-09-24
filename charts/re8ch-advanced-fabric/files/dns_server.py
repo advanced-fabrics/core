@@ -253,10 +253,13 @@ class KubernetesIndex:
         publish_unready = bool(spec.get("publishNotReadyAddresses"))
         ports = []
         for slc in slices:
-            for port in slc.get("ports", []):
+            # EndpointSlice permits both fields to be explicitly null. Treat
+            # null exactly like an omitted/empty collection so one malformed
+            # or portless slice cannot crash the authoritative DNS worker.
+            for port in slc.get("ports") or []:
                 if port.get("port") and (not port_name or port.get("name") == port_name) and (not protocol or port.get("protocol", "TCP") == protocol):
                     ports.append(port)
-            for endpoint in slc.get("endpoints", []):
+            for endpoint in slc.get("endpoints") or []:
                 if not publish_unready and endpoint.get("conditions", {}).get("ready") is False:
                     continue
                 ep_host = endpoint.get("hostname")

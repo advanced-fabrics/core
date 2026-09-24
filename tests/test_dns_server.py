@@ -80,6 +80,13 @@ class DNSServerTest(unittest.TestCase):
             "endpoints": [{"addresses": ["10.42.1.10"], "conditions": {"ready": False}}]}}
         self.assertEqual(dns.INDEX.records("api.default.svc.cluster.local.", dns.Q_A), [])
 
+    def test_headless_service_tolerates_null_slice_collections(self):
+        dns.INDEX.services[("default", "portless")] = {"spec": {"clusterIP": "None"}}
+        dns.INDEX.slices[("default", "portless")] = {"slice": {
+            "metadata": {"uid": "slice"}, "ports": None, "endpoints": None}}
+        self.assertEqual(
+            dns.INDEX.records("portless.default.svc.cluster.local.", dns.Q_A), [])
+
     def test_watch_events_update_and_delete_service(self):
         item = {"metadata": {"namespace": "default", "name": "api"}, "spec": {"clusterIP": "10.43.2.3"}}
         dns.INDEX.apply_event("services", {"type": "ADDED", "object": item})
