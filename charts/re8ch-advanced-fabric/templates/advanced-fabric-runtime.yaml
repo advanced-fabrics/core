@@ -113,7 +113,7 @@ spec:
           ports: [{name: observation-api, containerPort: {{ .Values.advancedFabric.componentAPI.port }}}]
           readinessProbe: {httpGet: {path: /healthz, port: observation-api}, periodSeconds: 10}
           securityContext: {allowPrivilegeEscalation: false, capabilities: {drop: [ALL]}, readOnlyRootFilesystem: true}
-          resources: {requests: {cpu: 5m, memory: 16Mi}, limits: {cpu: 100m, memory: 64Mi}}
+          resources: {requests: {cpu: 25m, memory: 64Mi}, limits: {cpu: 500m, memory: 256Mi}}
           volumeMounts: [{name: runtime, mountPath: /runtime, readOnly: true}, {name: tmp, mountPath: /tmp}]
       volumes: [{name: runtime, configMap: {name: advanced-fabric-runtime, defaultMode: 365}}, {name: tmp, emptyDir: {}}]
 ---
