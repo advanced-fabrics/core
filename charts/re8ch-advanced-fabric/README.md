@@ -74,6 +74,12 @@ accelerated host/FRR domain. Eligible nodes probe their local kube-apiserver
 `/readyz`; the controller publishes eligibility and node readiness in desired
 state and CR status. Guarded apply requires a checksum-bound per-node
 transaction. `guardedNodes` limits VIP ownership during canary rollout;
+`nodeOperations` may declare `sourceIdentityPreserveRules` before
+`sourceIdentityRules`. Each preserve rule matches an originating CIDR,
+destination CIDR, and optional protocol/port, then returns before local-source
+SNAT. Use it for relayed etcd peer traffic whose TLS certificate must retain
+the source node identity.
+
 `nodeOperations` declares only exact fallback routes, WireGuard interfaces,
 FRR export prefix lists, routing-policy rules and source-identity rules.
 Routing-policy rules let a node keep long-lived control-plane flows on a stable

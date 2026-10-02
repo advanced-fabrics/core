@@ -177,6 +177,20 @@ manage_source_identity_rules() {
   host nft delete table ip "${table}" 2>/dev/null || true
   host nft add table ip "${table}"
   host nft add chain ip "${table}" postrouting '{ type nat hook postrouting priority srcnat; policy accept; }'
+  # Forwarded Raft peers retain their accelerated source identities. These
+  # exemptions must precede the broad local-source SNAT rules below.
+  transaction | jq -c '.sourceIdentityPreserveRules[]?' | while read -r rule; do
+    source=$(printf '%s' "${rule}" | jq -r '.source'); destination=$(printf '%s' "${rule}" | jq -r '.destination')
+    protocol=$(printf '%s' "${rule}" | jq -r '.protocol // empty'); port=$(printf '%s' "${rule}" | jq -r '.port // empty')
+    [ -n "${source}" ] && [ -n "${destination}" ] || exit 1
+    if [ -z "${protocol}" ]; then
+      host nft add rule ip "${table}" postrouting ip saddr "${source}" ip daddr "${destination}" return || exit 1
+    elif [ -z "${port}" ]; then
+      host nft add rule ip "${table}" postrouting ip saddr "${source}" ip daddr "${destination}" "${protocol}" return || exit 1
+    else
+      host nft add rule ip "${table}" postrouting ip saddr "${source}" ip daddr "${destination}" "${protocol}" dport "${port}" return || exit 1
+    fi
+  done || return 1
   transaction | jq -c '.sourceIdentityRules[]?' | while read -r rule; do
     source=$(printf '%s' "${rule}" | jq -r '.source'); destination=$(printf '%s' "${rule}" | jq -r '.destination')
     protocol=$(printf '%s' "${rule}" | jq -r '.protocol // empty'); port=$(printf '%s' "${rule}" | jq -r '.port // empty')
