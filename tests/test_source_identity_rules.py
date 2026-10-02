@@ -26,6 +26,21 @@ def test_source_identity_rules_are_checksum_bound_to_host_transaction():
     assert transaction["checksum"] == hashlib.sha256(canonical.encode()).hexdigest()
 
 
+def test_preserve_rules_precede_snat_and_are_checksum_bound():
+    preserve = {"source": "10.250.0.147/32", "destination": "10.250.0.29/32",
+                "protocol": "tcp", "port": "2379-2380"}
+    transaction = load_make_api_transaction()(
+        "r640", {"vip": "10.250.0.1/32"}, {"sourceIdentityPreserveRules": [preserve]}, True
+    )
+    assert transaction["spec"]["sourceIdentityPreserveRules"] == [preserve]
+    canonical = json.dumps(transaction["spec"], sort_keys=True, separators=(",", ":"))
+    assert transaction["checksum"] == hashlib.sha256(canonical.encode()).hexdigest()
+    script = (ROOT / "charts/re8ch-advanced-fabric/files/host-agent.sh").read_text(encoding="utf-8")
+    rules = script.split("manage_source_identity_rules()", 1)[1].split("manage_routing_policy_rules()", 1)[0]
+    assert rules.index(".sourceIdentityPreserveRules[]?") < rules.index(".sourceIdentityRules[]?")
+    assert 'ip saddr "${source}" ip daddr "${destination}" "${protocol}" dport "${port}" return' in rules
+
+
 def test_host_agent_applies_source_identity_after_routes_and_before_vip_health():
     script = (ROOT / "charts/re8ch-advanced-fabric/files/host-agent.sh").read_text(encoding="utf-8")
     assert "nft add chain ip" in script
