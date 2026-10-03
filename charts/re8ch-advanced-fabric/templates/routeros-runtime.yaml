@@ -55,8 +55,20 @@ spec:
       labels: {app.kubernetes.io/name: advanced-fabric-routeros}
     spec:
       serviceAccountName: advanced-fabric-routeros
+      hostNetwork: {{ .Values.routerOS.hostNetwork }}
+{{- if .Values.routerOS.hostNetwork }}
+      dnsPolicy: ClusterFirstWithHostNet
+{{- end }}
 {{- with .Values.routerOS.nodeSelector }}
       nodeSelector:
+{{ toYaml . | indent 8 }}
+{{- end }}
+{{- with .Values.routerOS.affinity }}
+      affinity:
+{{ toYaml . | indent 8 }}
+{{- end }}
+{{- with .Values.routerOS.tolerations }}
+      tolerations:
 {{ toYaml . | indent 8 }}
 {{- end }}
       containers:
