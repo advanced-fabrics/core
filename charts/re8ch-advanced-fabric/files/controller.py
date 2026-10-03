@@ -568,6 +568,27 @@ def path_evidence_document(node, node_ready, status, measurements, validity_seco
         path.get("pathRole", "current") == "current" and path.get("lossRatio") is not None and
         float(path.get("lossRatio", 1)) < 1 for path in item.get("paths", []))}
     reachable = set(successful_planes) == {"host", "pod"} if executed else None
+    # Keep DNS dependency reachability separate from general path existence
+    # and O/S/I quality. One successful peer does not certify DNS replicas.
+    dns_evidence = []
+    dns_complete = set(planes) == {"host", "pod"}
+    for item in current:
+        entries = [entry for entry in item.get("dns", [])
+                   if entry.get("serverRole") in ("stable", "kube-dns", "replica")]
+        by_role = {role: [entry for entry in entries if entry.get("serverRole") == role]
+                   for role in ("stable", "kube-dns", "replica")}
+        for role, values in by_role.items():
+            addresses = {entry.get("server") for entry in values}
+            if not addresses or any({entry.get("protocol") for entry in values
+                                    if entry.get("server") == address} != {"udp", "tcp"}
+                                    for address in addresses):
+                dns_complete = False
+        dns_evidence.extend(dict(entry, sourcePlane=item.get("sourcePlane"),
+                                 sourceNode=node["name"], observedAt=item.get("observedAt"))
+                            for entry in entries)
+    dns_ready = (all(int(entry.get("attempts") or 0) > 0 and
+                     entry.get("successes") == entry.get("attempts") for entry in dns_evidence)
+                 if dns_complete and dns_evidence else None)
     observed = max([status.get("observedAt", "")] + [item.get("observedAt", "") for item in current])
     observed_epoch = parse_time(observed) if observed else None
     valid_until_epoch = observed_epoch + validity_seconds if observed_epoch is not None else None
@@ -591,7 +612,9 @@ def path_evidence_document(node, node_ready, status, measurements, validity_seco
         "pathEvidence": {"reachable": reachable, "currentPathMeasured": executed,
                          "viableAlternatives": len(alternatives) if paths else None,
                          "freshPlanes": planes, "missingEvidence": missing},
-        "evidenceRefs": ["path-quality-v1", "node-measurement-v1alpha1"],
+        "dependencyEvidence": {"dnsReady": dns_ready, "dnsComplete": dns_complete,
+                               "dnsPaths": dns_evidence},
+        "evidenceRefs": ["path-quality-v1", "node-measurement-v1alpha1", "dns-quality-v1"],
         "conditions": [condition("EvidenceReady", eligible, reason,
                                   "fresh, executed and reachable path evidence" if eligible else ", ".join(missing) or reason)]}
     if observed: result["observedAt"] = observed

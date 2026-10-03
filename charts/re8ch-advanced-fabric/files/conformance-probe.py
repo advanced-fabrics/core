@@ -195,6 +195,17 @@ def discover():
             targets.append({"node": name, "hostIP": host_ip, "podIP": pod_ips.get(name)})
     service = api("GET", "/api/v1/namespaces/%s/services/%s" % (NAMESPACE, DNS_SERVICE))
     dns_servers = [("stable", service.get("spec", {}).get("clusterIP"))]
+    # Service success cannot prove that each selectable replica is reachable.
+    slices = api("GET", "/apis/discovery.k8s.io/v1/namespaces/%s/endpointslices?labelSelector=" % NAMESPACE +
+                 "kubernetes.io%2Fservice-name%3D" + DNS_SERVICE).get("items", [])
+    replicas = sorted({address for item in slices for endpoint in item.get("endpoints", [])
+                       if endpoint.get("conditions", {}).get("ready") is True
+                       for address in endpoint.get("addresses", [])})
+    dns_servers.extend(("replica", address) for address in replicas)
+    if DNS_SERVICE != "kube-dns":
+        kube_dns = api("GET", "/api/v1/namespaces/%s/services/kube-dns" % NAMESPACE)
+        dns_servers.append(("kube-dns", kube_dns.get("spec", {}).get("clusterIP")))
+
     if SHADOW_DNS_SERVICE:
         try:
             shadow = api("GET", "/api/v1/namespaces/%s/services/%s" % (NAMESPACE, SHADOW_DNS_SERVICE))
@@ -256,10 +267,13 @@ def snapshot():
                 **measure(alternative["address"])}
     with concurrent.futures.ThreadPoolExecutor(max_workers=max(1, min(MAX_CONCURRENCY, len(alternatives)))) as pool:
         paths.extend(pool.map(measure_alternative, alternatives))
-    dns = []
-    for role, dns_server in dns_servers:
-        if dns_server and dns_server != "None":
-            dns.extend(dns_measure(dns_server, protocol, role=role) for protocol in ("udp", "tcp"))
+    dns_jobs = [(role, server, protocol) for role, server in dns_servers
+                if server and server != "None" for protocol in ("udp", "tcp")]
+    def measure_dns(job):
+        role, server, protocol = job
+        return dns_measure(server, protocol, role=role)
+    with concurrent.futures.ThreadPoolExecutor(max_workers=max(1, min(MAX_CONCURRENCY, len(dns_jobs)))) as pool:
+        dns = list(pool.map(measure_dns, dns_jobs))
     doh = [doh_measure(DOH_URL)] if DOH_URL else []
     path_attempts = sum(item.get("attempts", 0) for item in paths)
     path_successes = sum(item.get("successes", 0) for item in paths)
