@@ -62,6 +62,8 @@ advancedFabric:
   controller:
     replicas: 1
     pdbMinAvailable: 0
+    useNodeLocalAPI: false
+    nodeLocalAPIPort: 6443
     nodeSelector: {}
     affinity: {}
     tolerations: []

@@ -51,6 +51,8 @@
           "properties": {
             "replicas": {"type": "integer", "minimum": 1},
             "pdbMinAvailable": {"type": "integer", "minimum": 0},
+            "useNodeLocalAPI": {"type": "boolean"},
+            "nodeLocalAPIPort": {"type": "integer", "minimum": 1, "maximum": 65535},
             "nodeSelector": {"type": "object", "additionalProperties": {"type": "string"}},
             "affinity": {"type": "object"},
             "tolerations": {"type": "array", "items": {"type": "object"}}
