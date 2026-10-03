@@ -18,6 +18,12 @@ LEASE_SECONDS = 30
 WRITE_WINDOW_SECONDS = 8
 
 
+def kubernetes_time(value):
+    # coordination.k8s.io/v1 Lease uses metav1.MicroTime. Its JSON decoder
+    # requires a fractional component even when the API Date is a whole second.
+    return value.astimezone(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%S.%fZ")
+
+
 class LeaderLease:
     def __init__(self, base, token, context, namespace, identity):
         if not namespace or not identity:
@@ -101,8 +107,8 @@ class LeaderLease:
                 "metadata": metadata,
                 "spec": {"holderIdentity": self.identity,
                          "leaseDurationSeconds": LEASE_SECONDS,
-                         "acquireTime": spec.get("acquireTime") if holder == self.identity else now.isoformat(),
-                         "renewTime": now.isoformat(),
+                         "acquireTime": spec.get("acquireTime") if holder == self.identity else kubernetes_time(now),
+                         "renewTime": kubernetes_time(now),
                          "leaseTransitions": int(spec.get("leaseTransitions") or 0) +
                          (1 if holder and holder != self.identity else 0)}}
 
