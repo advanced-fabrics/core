@@ -60,6 +60,8 @@ advancedFabric:
   weightedEcmp:
     enabled: false
   controller:
+    replicas: 1
+    pdbMinAvailable: 0
     nodeSelector: {}
     affinity: {}
     tolerations: []
