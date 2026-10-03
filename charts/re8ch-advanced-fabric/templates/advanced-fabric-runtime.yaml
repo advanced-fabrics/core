@@ -187,6 +187,7 @@ spec:
       containers:
         - name: service-traffic-window
           image: quay.io/cilium/cilium-ci:latest@sha256:19ff540fa2927047d4935d5c1b173818225cc288c20a55d0bdb8748ea8adbb26
+          imagePullPolicy: IfNotPresent
           command: [/bin/sh, /runtime/service-traffic-window.sh]
           env:
             - {name: NODE_NAME, valueFrom: {fieldRef: {fieldPath: spec.nodeName}}}
@@ -199,6 +200,7 @@ spec:
             - {name: status, mountPath: /status}
         - name: agent
           image: quay.io/cilium/cilium-ci:latest@sha256:19ff540fa2927047d4935d5c1b173818225cc288c20a55d0bdb8748ea8adbb26
+          imagePullPolicy: IfNotPresent
           command: [/bin/sh, /runtime/host-agent.sh]
           env:
             - {name: NODE_NAME, valueFrom: {fieldRef: {fieldPath: spec.nodeName}}}

@@ -2,8 +2,8 @@ apiVersion: v2
 name: advanced-fabric
 description: Public, observe-first Cilium and FRR fabric control and network evidence API
 type: application
-version: 1.0.0-rc.8
-appVersion: "1.0.0-rc.8"
+version: 1.0.0-rc.9
+appVersion: "1.0.0-rc.9"
 kubeVersion: ">=1.30.0-0"
 home: https://advfab.org
 sources:
