@@ -72,6 +72,12 @@ class LeaderLeaseTest(unittest.TestCase):
         with patch.object(lease_module.time, "monotonic", return_value=109):
             self.assertFalse(lease.may_write())
 
+    def test_kubernetes_microtime_includes_fractional_seconds(self):
+        lease = FakeLease()
+        body = lease._body(NOW)
+        self.assertEqual(body["spec"]["acquireTime"], "2026-10-03T12:00:00.000000Z")
+        self.assertEqual(body["spec"]["renewTime"], "2026-10-03T12:00:00.000000Z")
+
 
 if __name__ == "__main__":
     unittest.main()
