@@ -22,6 +22,9 @@ routerOS:
   namespace: advanced-fabric
   credentialsSecret: {namespace: "", name: ""}
   nodeSelector: {}
+  affinity: {}
+  tolerations: []
+  hostNetwork: false
 advancedFabric:
   enabled: false
   instanceName: advanced-fabric
@@ -58,6 +61,8 @@ advancedFabric:
     enabled: false
   controller:
     nodeSelector: {}
+    affinity: {}
+    tolerations: []
     advisorURL: ""
     image: python:3.13-alpine@sha256:540c7d91f98ff6880174c40e99067bf5941eb54d818a7a5e094d188b196a934d
   componentAPI:

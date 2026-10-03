@@ -87,6 +87,14 @@ spec:
       nodeSelector:
 {{ toYaml . | indent 8 }}
 {{- end }}
+{{- with .Values.advancedFabric.controller.affinity }}
+      affinity:
+{{ toYaml . | indent 8 }}
+{{- end }}
+{{- with .Values.advancedFabric.controller.tolerations }}
+      tolerations:
+{{ toYaml . | indent 8 }}
+{{- end }}
       containers:
         - name: controller
           image: {{ .Values.advancedFabric.controller.image }}
