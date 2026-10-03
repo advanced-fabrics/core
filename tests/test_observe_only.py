@@ -19,7 +19,8 @@ def test_transaction_validation_is_inside_guarded_apply_branch():
 def test_controller_api_access_does_not_depend_on_accelerated_vip():
     template = (Path(__file__).parents[1] /
                 "charts/re8ch-advanced-fabric/templates/advanced-fabric-runtime.yaml").read_text()
-    assert 'name: API_HOST' not in template
+    # Optional node-local API is tested by test_controller_api_target.py.
+    # It must not introduce a dependency on the accelerated service VIP.
     assert '10.250.0.1' not in template
 
 

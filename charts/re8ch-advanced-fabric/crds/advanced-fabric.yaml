@@ -329,6 +329,14 @@ spec:
                 state: {type: string, enum: [Ready, Partial, Unknown, Stale, Contradictory]}
                 nodeReady: {type: boolean, nullable: true}
                 collectorEpoch: {type: string}
+                dependencyEvidence:
+                  type: object
+                  properties:
+                    dnsReady: {type: boolean, nullable: true}
+                    dnsComplete: {type: boolean}
+                    dnsPaths:
+                      type: array
+                      items: {type: object, x-kubernetes-preserve-unknown-fields: true}
                 pathEvidence:
                   type: object
                   properties:

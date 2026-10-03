@@ -63,6 +63,25 @@ class NetworkQualityTest(unittest.TestCase):
         self.assertTrue(status["pathEvidence"]["reachable"])
         self.assertNotIn("dimensions", status)
 
+    def test_dns_dependency_does_not_hide_one_bad_replica(self):
+        now = 1_800_000_000
+        observed = datetime.datetime.fromtimestamp(now, datetime.timezone.utc).isoformat()
+        measurements = {("node-a", plane): {"sourcePlane": plane, "fresh": True,
+            "observedAt": observed, "paths": [{"lossRatio": 0}], "dns": [
+                {"serverRole": role, "server": address, "protocol": protocol,
+                 "attempts": 3, "successes": 3} for role, address in
+                [("stable", "10.43.1.1"), ("kube-dns", "10.43.0.10"), ("replica", "10.42.5.36")]
+                for protocol in ("udp", "tcp")]} for plane in ("host", "pod")}
+        _, status = controller["path_evidence_document"]({"name": "node-a"}, True, {}, measurements, 120, now)
+        self.assertTrue(status["dependencyEvidence"]["dnsReady"])
+        measurements[("node-a", "pod")]["dns"][-1]["successes"] = 0
+        _, status = controller["path_evidence_document"]({"name": "node-a"}, True, {}, measurements, 120, now)
+        self.assertFalse(status["dependencyEvidence"]["dnsReady"])
+        self.assertTrue(status["pathEvidence"]["reachable"])
+        measurements[("node-a", "pod")]["dns"] = []
+        _, status = controller["path_evidence_document"]({"name": "node-a"}, True, {}, measurements, 120, now)
+        self.assertIsNone(status["dependencyEvidence"]["dnsReady"])
+
     def test_not_ready_npa_fails_closed_without_zero_substitution(self):
         _, status = controller["path_evidence_document"](
             {"name": "node-a"}, False, {}, {}, 120, 1_800_000_000)
