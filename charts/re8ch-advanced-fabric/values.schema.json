@@ -46,6 +46,16 @@
         "nativeRoutingCIDR": {"type": "string"},
         "acceleratedCIDR": {"type": "string"},
         "serviceCIDR": {"type": "string"},
+        "controller": {
+          "type": "object",
+          "properties": {
+            "replicas": {"type": "integer", "minimum": 1},
+            "pdbMinAvailable": {"type": "integer", "minimum": 0},
+            "nodeSelector": {"type": "object", "additionalProperties": {"type": "string"}},
+            "affinity": {"type": "object"},
+            "tolerations": {"type": "array", "items": {"type": "object"}}
+          }
+        },
         "componentAPI": {
           "type": "object",
           "required": ["publishAssessments", "validitySeconds", "serviceName", "port"],

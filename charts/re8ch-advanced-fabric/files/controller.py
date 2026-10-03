@@ -11,6 +11,8 @@ import urllib.parse
 import urllib.request
 import math
 import datetime
+import threading
+from leader_lease import LeaderLease
 
 
 HOST = os.environ.get("API_HOST", os.environ.get("KUBERNETES_SERVICE_HOST", "kubernetes.default.svc"))
@@ -28,6 +30,7 @@ NAMESPACE = os.environ.get("POD_NAMESPACE", "default")
 MANAGED_BY = "advanced-fabric"
 OBSERVATION_API_SERVICE = os.environ.get("OBSERVATION_API_SERVICE", "advanced-fabric-observation-api")
 OBSERVATION_API_PORT = int(os.environ.get("OBSERVATION_API_PORT", "8080"))
+LEADER = LeaderLease(BASE, TOKEN, CONTEXT, NAMESPACE, os.environ.get("POD_NAME", ""))
 MEASUREMENT_DEFINITIONS = {
     "path-quality-v1": {"scope": "source node/plane to one selected path endpoint", "unit": "loss ratio and milliseconds",
         "samplingProcedure": "bounded TCP attempts at configured cadence", "timeWindow": "one collector interval",
@@ -55,6 +58,8 @@ MEASUREMENT_DEFINITIONS = {
 
 
 def request(method, path, body=None):
+    if method in ("POST", "PUT", "PATCH", "DELETE") and not LEADER.may_write():
+        raise RuntimeError("Advanced Fabric Lease lost; refusing cluster write")
     data = json.dumps(body).encode() if body is not None else None
     headers = {"Authorization": f"Bearer {TOKEN}", "Accept": "application/json"}
     if data is not None:
@@ -1035,7 +1040,11 @@ def reconcile():
                 raise
 
 
+threading.Thread(target=LEADER.run, name="advanced-fabric-lease", daemon=True).start()
 while True:
+    if not LEADER.may_write():
+        time.sleep(3)
+        continue
     try:
         reconcile()
     except Exception as exc:

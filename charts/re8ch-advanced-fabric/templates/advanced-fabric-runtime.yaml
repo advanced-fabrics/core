@@ -47,12 +47,28 @@ subjects:
   - {kind: ServiceAccount, name: advanced-fabric, namespace: {{ .Values.advancedFabric.runtimeNamespace }}}
 roleRef: {apiGroup: rbac.authorization.k8s.io, kind: ClusterRole, name: advanced-fabric}
 ---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata: {name: advanced-fabric-controller-lease, namespace: {{ .Values.advancedFabric.runtimeNamespace }}}
+rules:
+  - apiGroups: [coordination.k8s.io]
+    resources: [leases]
+    verbs: [get, create, update]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata: {name: advanced-fabric-controller-lease, namespace: {{ .Values.advancedFabric.runtimeNamespace }}}
+subjects: [{kind: ServiceAccount, name: advanced-fabric, namespace: {{ .Values.advancedFabric.runtimeNamespace }}}]
+roleRef: {apiGroup: rbac.authorization.k8s.io, kind: Role, name: advanced-fabric-controller-lease}
+---
 apiVersion: v1
 kind: ConfigMap
 metadata: {name: advanced-fabric-runtime, namespace: {{ .Values.advancedFabric.runtimeNamespace }}}
 data:
   controller.py: |
 {{ .Files.Get "files/controller.py" | indent 4 }}
+  leader_lease.py: |
+{{ .Files.Get "files/leader_lease.py" | indent 4 }}
   observation-api.py: |
 {{ .Files.Get "files/observation-api.py" | indent 4 }}
   host-agent.sh: |
@@ -72,13 +88,17 @@ metadata:
   name: advanced-fabric-controller
   namespace: {{ .Values.advancedFabric.runtimeNamespace }}
 spec:
-  replicas: 1
+  replicas: {{ .Values.advancedFabric.controller.replicas }}
+{{- if gt (int .Values.advancedFabric.controller.replicas) 1 }}
+  strategy: {type: RollingUpdate, rollingUpdate: {maxUnavailable: 1, maxSurge: 0}}
+{{- else }}
   strategy: {type: Recreate}
+{{- end }}
   selector: {matchLabels: {app.kubernetes.io/name: advanced-fabric-controller}}
   template:
     metadata:
       annotations:
-        checksum/runtime: {{ printf "%s\n%s\n%s\n%s\n%s\n%s\n%s" (.Files.Get "files/controller.py") (.Files.Get "files/observation-api.py") (.Files.Get "files/host-agent.sh") (.Files.Get "files/status-publisher.py") (.Files.Get "files/conformance-probe.py") (.Files.Get "files/node-measurement.py") (.Files.Get "files/service-traffic-window.sh") | sha256sum | quote }}
+        checksum/runtime: {{ printf "%s\n%s\n%s\n%s\n%s\n%s\n%s\n%s" (.Files.Get "files/controller.py") (.Files.Get "files/leader_lease.py") (.Files.Get "files/observation-api.py") (.Files.Get "files/host-agent.sh") (.Files.Get "files/status-publisher.py") (.Files.Get "files/conformance-probe.py") (.Files.Get "files/node-measurement.py") (.Files.Get "files/service-traffic-window.sh") | sha256sum | quote }}
       labels: {app.kubernetes.io/name: advanced-fabric-controller}
     spec:
       serviceAccountName: advanced-fabric
@@ -108,6 +128,7 @@ spec:
             - {name: OBSERVATION_API_SERVICE, value: {{ .Values.advancedFabric.componentAPI.serviceName | quote }}}
             - {name: OBSERVATION_API_PORT, value: {{ .Values.advancedFabric.componentAPI.port | quote }}}
             - {name: POD_NAMESPACE, valueFrom: {fieldRef: {fieldPath: metadata.namespace}}}
+            - {name: POD_NAME, valueFrom: {fieldRef: {fieldPath: metadata.name}}}
           securityContext: {allowPrivilegeEscalation: false, capabilities: {drop: [ALL]}, readOnlyRootFilesystem: true}
           resources: {requests: {cpu: 20m, memory: 32Mi}, limits: {cpu: 250m, memory: 128Mi}}
           volumeMounts: [{name: runtime, mountPath: /runtime, readOnly: true}, {name: tmp, mountPath: /tmp}]
@@ -125,6 +146,15 @@ spec:
           volumeMounts: [{name: runtime, mountPath: /runtime, readOnly: true}, {name: tmp, mountPath: /tmp}]
       volumes: [{name: runtime, configMap: {name: advanced-fabric-runtime, defaultMode: 365}}, {name: tmp, emptyDir: {}}]
 ---
+{{- if gt (int .Values.advancedFabric.controller.replicas) 1 }}
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata: {name: advanced-fabric-controller, namespace: {{ .Values.advancedFabric.runtimeNamespace }}}
+spec:
+  minAvailable: {{ .Values.advancedFabric.controller.pdbMinAvailable }}
+  selector: {matchLabels: {app.kubernetes.io/name: advanced-fabric-controller}}
+---
+{{- end }}
 apiVersion: v1
 kind: Service
 metadata:
