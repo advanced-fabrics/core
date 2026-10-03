@@ -111,6 +111,20 @@ def dns_rcode(payload, query_id):
     return flags & 0xF
 
 
+def recv_exact(client, size, deadline):
+    payload = b""
+    while len(payload) < size:
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            raise TimeoutError("DNS frame deadline exceeded")
+        client.settimeout(remaining)
+        chunk = client.recv(size - len(payload))
+        if not chunk:
+            raise ValueError("truncated DNS TCP frame")
+        payload += chunk
+    return payload
+
+
 def dns_query(server, name, protocol="udp"):
     query_id, packet = dns_packet(name)
     started = time.monotonic()
@@ -121,10 +135,9 @@ def dns_query(server, name, protocol="udp"):
             client.connect((server, 53))
             if protocol == "tcp":
                 client.sendall(struct.pack("!H", len(packet)) + packet)
-                size = struct.unpack("!H", client.recv(2))[0]
-                response = b""
-                while len(response) < size:
-                    response += client.recv(size - len(response))
+                deadline = started + TIMEOUT
+                size = struct.unpack("!H", recv_exact(client, 2, deadline))[0]
+                response = recv_exact(client, size, deadline)
             else:
                 client.send(packet)
                 response = client.recv(4096)

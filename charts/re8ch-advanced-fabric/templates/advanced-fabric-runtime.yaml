@@ -334,7 +334,10 @@ apiVersion: apps/v1
 kind: DaemonSet
 metadata: {name: advanced-fabric-pod-conformance, namespace: {{ .Values.advancedFabric.runtimeNamespace }}}
 spec:
-  updateStrategy: {type: RollingUpdate, rollingUpdate: {maxUnavailable: 25%}}
+  # These Pods only observe; they do not own routes or serve application traffic.
+  # Offline retained nodes must not block fresh evidence on all healthy nodes.
+  # Consumers treat the bounded evidence gap as unknown during this rollout.
+  updateStrategy: {type: RollingUpdate, rollingUpdate: {maxUnavailable: 100%}}
   selector: {matchLabels: {app.kubernetes.io/name: advanced-fabric-pod-conformance}}
   template:
     metadata:
