@@ -139,13 +139,23 @@ class DNSServerTest(unittest.TestCase):
             json.dump({"records": {
                 "headlamp.zt.re8ch.com": [{"type": "A", "value": "10.181.22.16"}],
                 "panel.zt.re8ch.com": [{"type": "CNAME", "value": "headlamp.zt.re8ch.com."}],
+                "pg.zt.re8ch.com": [{"type": "A", "value": "10.181.22.186"}],
+                "pgwrite.zt.re8ch.com": [{"type": "CNAME", "value": "pg.zt.re8ch.com."}],
+                "loop1.zt.re8ch.com": [{"type": "CNAME", "value": "loop2.zt.re8ch.com."}],
+                "loop2.zt.re8ch.com": [{"type": "CNAME", "value": "loop1.zt.re8ch.com."}],
             }}, stream)
             stream.flush()
             index = dns.StaticIndex(stream.name)
             self.assertTrue(index.is_ready())
             self.assertEqual(index.records("headlamp.zt.re8ch.com.", dns.Q_A), [(dns.Q_A, "10.181.22.16")])
             self.assertEqual(index.records("panel.zt.re8ch.com.", dns.Q_A),
+                             [(dns.Q_A, "10.181.22.16")])
+            self.assertEqual(index.records("panel.zt.re8ch.com.", dns.Q_CNAME),
                              [(dns.Q_CNAME, "headlamp.zt.re8ch.com.")])
+            self.assertEqual(index.records("panel.zt.re8ch.com.", dns.Q_AAAA), [])
+            self.assertEqual(index.records("pgwrite.zt.re8ch.com.", dns.Q_A),
+                             [(dns.Q_A, "10.181.22.186")])
+            self.assertEqual(index.records("loop1.zt.re8ch.com.", dns.Q_A), [])
 
 
 def socket_bytes(address):
