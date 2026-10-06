@@ -312,12 +312,30 @@ class StaticIndex:
     def records(self, name, qtype):
         self.reload()
         with self.lock:
-            records = self.records_by_name.get(name)
+            records_by_name = self.records_by_name
+            records = records_by_name.get(name)
         if records is None:
             zone = os.getenv("STATIC_ZONE", "").rstrip(".").lower() + "."
             return NAME_NOT_FOUND if zone != "." and name.endswith(zone) else None
         if qtype == 255:
             return records
+        if qtype in (Q_A, Q_AAAA):
+            # In-zone CNAME-only address answers are not followed by every
+            # Kubernetes client. Return the target address while keeping
+            # explicit CNAME queries unchanged.
+            seen = {name}
+            for _ in range(8):
+                aliases = [value for kind, value in records if kind == Q_CNAME]
+                if len(aliases) != 1:
+                    break
+                target = aliases[0].rstrip(".").lower() + "."
+                if target in seen:
+                    return []
+                target_records = records_by_name.get(target)
+                if target_records is None:
+                    break
+                seen.add(target)
+                records = target_records
         return [record for record in records if record[0] == qtype or record[0] == Q_CNAME]
 
 
