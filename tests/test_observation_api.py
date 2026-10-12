@@ -67,3 +67,33 @@ def test_public_api_has_no_environment_specific_storage_endpoint():
     assert "vmselect" not in source
     assert "vmsingle" not in source
     assert "observability-system" not in source
+
+
+def test_snapshot_includes_all_agent_network_quality_payloads(monkeypatch):
+    documents = {
+        "structural-observation": [{"data": {"observations.json": '{"nodes":{"r640":{}}}'}}],
+        "node-status": [{"data": {"status.json": '{"node":"r640","frr":{"state":"active"}}'}}],
+        "node-measurement": [{"data": {"measurement.json": '{"node":"r640","measurements":[{"symbol":"n_peer","value":3}]}'}}],
+        "network-quality": [
+            {"data": {"result.json": '{"sourceNode":"r640","sourcePlane":"pod","dns":[{"protocol":"udp"}]}' }},
+            {"data": {"result.json": '{"sourceNode":"r640","sourcePlane":"host","paths":[{"targetNode":"peer"}]}' }},
+        ],
+    }
+    monkeypatch.setattr(observation_api, "configmaps", lambda component: documents[component])
+
+    node = observation_api.load_observations()["nodes"]["r640"]
+
+    assert node["networkStatus"]["frr"]["state"] == "active"
+    assert node["measurement"]["measurements"][0]["symbol"] == "n_peer"
+    assert [item["sourcePlane"] for item in node["networkQuality"]] == ["host", "pod"]
+    assert node["networkQuality"][1]["dns"][0]["protocol"] == "udp"
+
+
+def test_observation_cache_coalesces_page_requests(monkeypatch):
+    calls = []
+    observation_api._CACHE.clear()
+    monkeypatch.setattr(observation_api, "load_observations", lambda: calls.append(1) or {"nodes": {}})
+
+    assert observation_api.observations() == {"nodes": {}}
+    assert observation_api.observations() == {"nodes": {}}
+    assert calls == [1]
