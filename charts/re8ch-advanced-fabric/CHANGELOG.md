@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.0.0-rc.14
+
+- Coalesce concurrent observation API cache misses and reuse short-lived
+  Kubernetes list results instead of multiplying one page load into repeated
+  API reads.
+- Retry Kubernetes HTTP 429 responses with bounded backoff.
+- Include the complete per-node network-quality payload, including path, DNS,
+  DoH and history evidence, in the public node snapshot.
+
 ## 1.0.0-rc.5
 
 - Add a generic placement and availability contract for the stateless virtual
