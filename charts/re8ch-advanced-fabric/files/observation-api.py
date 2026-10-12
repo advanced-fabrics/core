@@ -6,6 +6,9 @@ import json
 import math
 import os
 import ssl
+import threading
+import time
+import urllib.error
 import urllib.parse
 import urllib.request
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -20,6 +23,10 @@ KUBE_PORT = os.environ.get("KUBERNETES_SERVICE_PORT_HTTPS", "443")
 BASE = "https://%s:%s" % (HOST, KUBE_PORT)
 TOKEN_PATH = "/var/run/secrets/kubernetes.io/serviceaccount/token"
 CA_PATH = "/var/run/secrets/kubernetes.io/serviceaccount/ca.crt"
+OBSERVATION_CACHE_SECONDS = float(os.environ.get("OBSERVATION_CACHE_SECONDS", "10"))
+KUBE_RETRY_ATTEMPTS = int(os.environ.get("OBSERVATION_KUBE_RETRY_ATTEMPTS", "4"))
+_CACHE = {}
+_CACHE_LOCK = threading.Lock()
 
 STRUCTURE_SYMBOLS = {
     "Q": ("a_reach", "l_path", "t_rtt", "b_rx"),
@@ -33,10 +40,35 @@ STRUCTURE_SYMBOLS = {
 
 def kube_get(path):
     token = open(TOKEN_PATH, encoding="utf-8").read().strip()
-    request = urllib.request.Request(BASE + path, headers={"Authorization": "Bearer " + token})
     context = ssl.create_default_context(cafile=CA_PATH)
-    with urllib.request.urlopen(request, context=context, timeout=10) as response:
-        return json.load(response)
+    for attempt in range(KUBE_RETRY_ATTEMPTS):
+        request = urllib.request.Request(BASE + path, headers={"Authorization": "Bearer " + token})
+        try:
+            with urllib.request.urlopen(request, context=context, timeout=10) as response:
+                return json.load(response)
+        except urllib.error.HTTPError as error:
+            if error.code != 429 or attempt == KUBE_RETRY_ATTEMPTS - 1:
+                raise
+            retry_after = error.headers.get("Retry-After")
+            delay = float(retry_after) if retry_after and retry_after.isdigit() else 0.25 * (2 ** attempt)
+            time.sleep(delay)
+
+
+def cached(key, loader, ttl=OBSERVATION_CACHE_SECONDS):
+    now = time.monotonic()
+    current = _CACHE.get(key)
+    if current and now - current[0] < ttl:
+        return current[1]
+    # The HTTP server is threaded. Serialize cache misses so one page load does
+    # not turn subjects/snapshot/relationships/series into concurrent API lists.
+    with _CACHE_LOCK:
+        current = _CACHE.get(key)
+        now = time.monotonic()
+        if current and now - current[0] < ttl:
+            return current[1]
+        value = loader()
+        _CACHE[key] = (now, value)
+        return value
 
 
 def parse_time(value):
@@ -116,7 +148,7 @@ def payload(item, key):
         return {}
 
 
-def observations():
+def load_observations():
     structural = configmaps("structural-observation")
     document = payload(structural[0], "observations.json") if structural else {"nodes": {}}
     nodes = document.setdefault("nodes", {})
@@ -128,12 +160,28 @@ def observations():
         measurement = payload(item, "measurement.json")
         if measurement.get("node"):
             nodes.setdefault(measurement["node"], {}).update({"measurement": measurement})
+    for item in configmaps("network-quality"):
+        measurement = payload(item, "result.json")
+        source_node = measurement.get("sourceNode")
+        if source_node:
+            nodes.setdefault(source_node, {}).setdefault("networkQuality", []).append(measurement)
+    for value in nodes.values():
+        value.get("networkQuality", []).sort(key=lambda item: (
+            item.get("sourcePlane", ""), item.get("observedAt", "")))
     return document
 
 
-def relationship_documents():
+def observations():
+    return cached("observations", load_observations)
+
+
+def load_relationship_documents():
     path = "/apis/%s/v1alpha1/tradeofftriangles" % API_GROUP
     return kube_get(path).get("items", [])
+
+
+def relationship_documents():
+    return cached("relationships", load_relationship_documents)
 
 
 class Handler(BaseHTTPRequestHandler):
