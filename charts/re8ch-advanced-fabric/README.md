@@ -16,7 +16,7 @@ interfaces, FRR/BGP/BFD health and kernel ECMP routes. Enable it with
 
 ```sh
 helm upgrade --install re8ch-network-fabric \
-  oci://ghcr.io/re8ch/charts/advanced-fabric \
+  oci://ghcr.io/advanced-fabrics/charts/advanced-fabric \
   --version 0.18.0 \
   --namespace advanced-fabric --create-namespace
 ```

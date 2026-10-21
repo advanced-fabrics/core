@@ -217,7 +217,7 @@ therefore does not remove the component's ability to describe that degradation.
 ## Installation verification
 
 ```sh
-helm template advanced-fabric oci://ghcr.io/re8ch/charts/advanced-fabric \
+helm template advanced-fabric oci://ghcr.io/advanced-fabrics/charts/advanced-fabric \
   --version 0.17.1 --set advancedFabric.enabled=true \
   --set advancedFabric.networkQuality.enabled=true >/tmp/advanced-fabric.yaml
 
