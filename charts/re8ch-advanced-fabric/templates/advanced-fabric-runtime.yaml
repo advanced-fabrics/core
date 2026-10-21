@@ -200,7 +200,10 @@ spec:
             - {name: NODE_NAME, valueFrom: {fieldRef: {fieldPath: spec.nodeName}}}
             - {name: SERVICE_TRAFFIC_WINDOW_SECONDS, value: "15"}
           securityContext: {privileged: true}
-          resources: {requests: {cpu: 5m, memory: 16Mi}, limits: {cpu: 100m, memory: 64Mi}}
+          # Busy clusters can briefly hold a full Hubble service-flow window
+          # while jq materializes the next snapshot. 64Mi caused repeatable
+          # OOMKills on otherwise healthy control-plane nodes.
+          resources: {requests: {cpu: 10m, memory: 32Mi}, limits: {cpu: 250m, memory: 128Mi}}
           volumeMounts:
             - {name: runtime, mountPath: /runtime, readOnly: true}
             - {name: host, mountPath: /host, readOnly: true}
