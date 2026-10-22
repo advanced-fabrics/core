@@ -95,10 +95,11 @@ verification in the same pull request.
 
 ## 7. Security and governance
 
-The repository MUST use private vulnerability reporting, dependency review,
-automated dependency updates, and a scheduled security scorecard. Pull requests
-MUST pass tests and security checks for the exact reviewed commit. Compatibility,
-protocol, trust-boundary, and new mutation-capability changes require an AFEP.
+The repository MUST use private vulnerability reporting, automated dependency
+updates, immutable dependency validation, and a scheduled security scorecard.
+Pull requests MUST pass tests and security checks for the exact reviewed
+commit. Compatibility, protocol, trust-boundary, and new mutation-capability
+changes require an AFEP.
 
 Generated output, vendored code, binary assets, and credentials MUST NOT be
 committed unless they are explicitly declared release inputs with provenance

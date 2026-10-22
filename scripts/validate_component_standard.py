@@ -66,6 +66,21 @@ def validate(requested_version: str | None = None) -> dict[str, object]:
         if marker not in workflow:
             fail(f"release workflow lacks required evidence marker: {marker}")
 
+    unpinned_actions: list[str] = []
+    for path in (ROOT / ".github/workflows").glob("*.y*ml"):
+        for line in path.read_text().splitlines():
+            match = re.match(r"\s*- uses:\s*([^\s#]+)", line)
+            if not match:
+                continue
+            reference = match.group(1)
+            if reference.startswith("./"):
+                continue
+            revision = reference.rsplit("@", 1)[-1]
+            if not re.fullmatch(r"[0-9a-f]{40}", revision):
+                unpinned_actions.append(f"{path.relative_to(ROOT)}: {reference}")
+    if unpinned_actions:
+        fail(f"GitHub Actions must be pinned to a full commit: {unpinned_actions}")
+
     return {
         "component": declaration["component"]["name"],
         "version": chart_version,
