@@ -1,22 +1,25 @@
 # Advanced Fabrics repository consolidation plan
 
-**Status:** phase 1 complete; content-bearing migrations remain planned
+**Status:** phase 1 deletion complete; content-bearing migrations remain planned
 **Inventory date:** 2026-10-22
 
 ## Progress
 
-Phase 1 reduced the active organization surface from 22 repositories to 12.
+Phase 1 reduced the organization surface from 22 repositories to 12.
 The following repositories contained only `README.md` and `LICENSE`, and had no
 releases, tags, workflows, Pages site, open issues, forks, or associated GitHub
 Package. They were marked with `core` as their maintained destination and
-archived on 2026-10-22:
+archived, backed up, and deleted on 2026-10-22:
 
 - `charts`, `cli`, and `reference-runtime`;
 - `providers`, `provider-cilium`, `provider-frr`, and `provider-linux`; and
 - `sdk-go`, `sdk-python`, and `sdk-typescript`.
 
-Archiving is reversible and preserves Git history and existing URLs. No
-repository was deleted. Content-bearing repositories remain active until their
+Before deletion, each repository was mirrored and exported as a verified,
+complete-history Git bundle under the operator's local repository archive.
+GitHub returned HTTP 404 for every deleted repository after the operation. The
+organization-wide `NO DELETE` ruleset was restored immediately with no
+repository exclusions. Content-bearing repositories remain active until their
 source, issues, published pages, and inbound references satisfy the exit
 criteria below.
 
@@ -56,18 +59,18 @@ and licensing boundaries differ from public implementation source.
 | Current repository | Destination | Proposed path | Disposition after migration |
 | --- | --- | --- | --- |
 | `api` | `core` | `api/` | archive |
-| `charts` | `core` | existing `charts/` | archive; it is already superseded by the core release workflow |
-| `cli` | `core` | `cmd/afctl/` | archive until substantive CLI code is added in core |
+| `charts` | `core` | existing `charts/` | deleted after verified backup; already superseded by the core release workflow |
+| `cli` | `core` | `cmd/afctl/` | deleted after verified backup; add future CLI code in core |
 | `conformance` | `core` | `conformance/` | migrate code and result schema, then archive |
 | `examples` | `core` | existing `examples/` | migrate useful examples, then archive |
-| `reference-runtime` | `core` | `deploy/reference/` | archive placeholder; add runtime manifests in core when maintained |
-| `providers` | `core` | `providers/` | archive placeholder; use this directory for shared provider contracts and test doubles |
-| `provider-cilium` | `core` | `providers/cilium/` | archive placeholder |
-| `provider-frr` | `core` | `providers/frr/` | archive placeholder |
-| `provider-linux` | `core` | `providers/linux/` | archive placeholder |
-| `sdk-go` | `core` | `sdk/go/` | archive placeholder; split again only after an independent release is justified |
-| `sdk-python` | `core` | `sdk/python/` | archive placeholder |
-| `sdk-typescript` | `core` | `sdk/typescript/` | archive placeholder |
+| `reference-runtime` | `core` | `deploy/reference/` | deleted after verified backup; add runtime manifests in core when maintained |
+| `providers` | `core` | `providers/` | deleted after verified backup; use this directory for shared provider contracts and test doubles |
+| `provider-cilium` | `core` | `providers/cilium/` | deleted after verified backup |
+| `provider-frr` | `core` | `providers/frr/` | deleted after verified backup |
+| `provider-linux` | `core` | `providers/linux/` | deleted after verified backup |
+| `sdk-go` | `core` | `sdk/go/` | deleted after verified backup; split again only after an independent release is justified |
+| `sdk-python` | `core` | `sdk/python/` | deleted after verified backup |
+| `sdk-typescript` | `core` | `sdk/typescript/` | deleted after verified backup |
 | `spec` | `docs` | `docs/spec/` and `docs/afeps/` | migrate normative pages, preserve redirects, then archive |
 | `website` | `docs` | documentation landing/theme | migrate public landing content, then archive |
 
