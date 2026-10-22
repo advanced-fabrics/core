@@ -13,6 +13,20 @@ decisions use AFEPs in
 Headlamp client is maintained independently in
 [`advanced-fabrics/headlamp-advanced-fabric`](https://github.com/advanced-fabrics/headlamp-advanced-fabric).
 
+## Component standard
+
+This repository defines an independently installable AdvFab component, not a
+bundle of Re8ch-specific infrastructure. The enforced standard, dependency
+boundary, and minimum scenario matrix are documented in:
+
+- [`docs/COMPONENT-STANDARD.md`](docs/COMPONENT-STANDARD.md);
+- [`docs/DEPENDENCIES.md`](docs/DEPENDENCIES.md); and
+- [`docs/SCENARIO-MATRIX.md`](docs/SCENARIO-MATRIX.md).
+
+[`component-standard.json`](component-standard.json) is the machine-readable
+declaration. CI checks its contracts, safe defaults, release inventory, and
+security automation with `scripts/validate_component_standard.py`.
+
 ## Theory-first O/S/I research model
 
 The implementation architecture and triangle closure rules are normative in
@@ -285,7 +299,7 @@ does not package, install or configure a Headlamp plugin.
 ```sh
 helm upgrade --install advanced-fabric \
   oci://ghcr.io/advanced-fabrics/charts/advanced-fabric \
-  --version 1.0.0-rc.1 \
+  --version 1.0.0-rc.14 \
   --namespace advanced-fabric --create-namespace
 ```
 
@@ -301,6 +315,8 @@ not change the router or the operator workstation's public path.
 ## Development
 
 ```sh
-helm lint charts/advanced-fabric
-helm template test charts/advanced-fabric >/dev/null
+python -m unittest discover -s tests -v
+python scripts/validate_component_standard.py
+helm lint charts/re8ch-advanced-fabric
+helm template test charts/re8ch-advanced-fabric >/dev/null
 ```
