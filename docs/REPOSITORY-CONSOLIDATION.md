@@ -1,11 +1,28 @@
 # Advanced Fabrics repository consolidation plan
 
-**Status:** proposed migration plan; no repository is archived by this document  
+**Status:** phase 1 complete; content-bearing migrations remain planned
 **Inventory date:** 2026-10-22
+
+## Progress
+
+Phase 1 reduced the active organization surface from 22 repositories to 12.
+The following repositories contained only `README.md` and `LICENSE`, and had no
+releases, tags, workflows, Pages site, open issues, forks, or associated GitHub
+Package. They were marked with `core` as their maintained destination and
+archived on 2026-10-22:
+
+- `charts`, `cli`, and `reference-runtime`;
+- `providers`, `provider-cilium`, `provider-frr`, and `provider-linux`; and
+- `sdk-go`, `sdk-python`, and `sdk-typescript`.
+
+Archiving is reversible and preserves Git history and existing URLs. No
+repository was deleted. Content-bearing repositories remain active until their
+source, issues, published pages, and inbound references satisfy the exit
+criteria below.
 
 ## Decision
 
-Reduce the organization from 22 repositories to five public collaboration
+Reduce the remaining organization surface to five public collaboration
 surfaces plus two private product repositories. Consolidate source before
 archiving a repository. Preserve history where it contains meaningful work,
 and leave an archive notice pointing to the new path.
