@@ -1,0 +1,80 @@
+{
+  "$schema": ".github/component-standard.schema.json",
+  "schemaVersion": "advfab.org/component-standard/v1",
+  "component": {
+    "name": "advanced-fabric",
+    "repository": "https://github.com/advanced-fabrics/core",
+    "license": "Apache-2.0",
+    "kind": "provider-neutral-network-evidence-controller"
+  },
+  "boundaries": {
+    "owns": [
+      "measurement definitions and bounded evidence collection",
+      "evidence-derived observation resources",
+      "observe-only recommendations and explicitly authorized guarded apply"
+    ],
+    "doesNotOwn": [
+      "Kubernetes node lifecycle or scheduling",
+      "consumer routing and publication policy",
+      "provider credentials or raw long-term telemetry",
+      "Headlamp installation or user-interface lifecycle"
+    ]
+  },
+  "contracts": [
+    {"id": "component-boundary", "path": "docs/component-contract.md", "stability": "versioned"},
+    {"id": "measurement-catalog", "path": "docs/osi-measurement-catalog.yaml", "stability": "versioned"},
+    {"id": "network-quality", "path": "docs/network-quality-standard.md", "stability": "versioned"},
+    {"id": "tradeoff-observatory", "path": "docs/tradeoff-observatory.md", "stability": "research-gated"}
+  ],
+  "defaults": {
+    "runtimeEnabled": false,
+    "applyEnabled": false,
+    "credentialsInRepository": false
+  },
+  "release": {
+    "versionSources": [
+      "charts/re8ch-advanced-fabric/Chart.yaml:version",
+      "charts/re8ch-advanced-fabric/Chart.yaml:appVersion"
+    ],
+    "workflow": ".github/workflows/release-chart.yaml",
+    "artifacts": [
+      {
+        "id": "helm-chart",
+        "kind": "helm-oci-chart",
+        "reference": "oci://ghcr.io/advanced-fabrics/charts/advanced-fabric:{version}",
+        "source": "charts/re8ch-advanced-fabric/Chart.yaml",
+        "signed": "cosign-keyless",
+        "provenance": "github-build-provenance",
+        "sbom": "spdx-json"
+      },
+      {
+        "id": "github-release-assets",
+        "kind": "github-release-assets",
+        "reference": "https://github.com/advanced-fabrics/core/releases/tag/v{version}",
+        "source": ".github/workflows/release-chart.yaml",
+        "signed": "cosign-blob-bundle",
+        "files": [
+          "advanced-fabric-{version}.tgz",
+          "advanced-fabric-{version}.tgz.sha256",
+          "advanced-fabric-{version}.tgz.bundle.json",
+          "advanced-fabric.spdx.json"
+        ]
+      }
+    ]
+  },
+  "assurance": {
+    "tests": ["python-unittest", "helm-lint", "helm-render", "public-boundary"],
+    "securityAutomation": [
+      ".github/dependabot.yml",
+      ".github/workflows/security.yml",
+      ".github/workflows/scorecard.yml"
+    ],
+    "requiredDocumentation": [
+      "docs/COMPONENT-STANDARD.md",
+      "docs/DEPENDENCIES.md",
+      "docs/SCENARIO-MATRIX.md",
+      "SECURITY.md",
+      "CONTRIBUTING.md"
+    ]
+  }
+}

@@ -1,6 +1,6 @@
 # Advanced Fabric component contract
 
-**Status:** implemented in chart 0.17
+**Status:** implemented and enforced by the repository component standard
 **Audience:** platform operators and services that consume network evidence
 
 ## Component boundary

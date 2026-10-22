@@ -1,0 +1,47 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://spec.advfab.org/schemas/component-standard-v1.json",
+  "title": "Advanced Fabrics component standard declaration",
+  "type": "object",
+  "required": ["schemaVersion", "component", "boundaries", "contracts", "defaults", "release", "assurance"],
+  "properties": {
+    "$schema": {"type": "string"},
+    "schemaVersion": {"const": "advfab.org/component-standard/v1"},
+    "component": {
+      "type": "object",
+      "required": ["name", "repository", "license", "kind"]
+    },
+    "boundaries": {
+      "type": "object",
+      "required": ["owns", "doesNotOwn"],
+      "properties": {
+        "owns": {"type": "array", "minItems": 1, "items": {"type": "string"}},
+        "doesNotOwn": {"type": "array", "minItems": 1, "items": {"type": "string"}}
+      }
+    },
+    "contracts": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": ["id", "path", "stability"]
+      }
+    },
+    "defaults": {
+      "type": "object",
+      "required": ["runtimeEnabled", "applyEnabled", "credentialsInRepository"]
+    },
+    "release": {
+      "type": "object",
+      "required": ["versionSources", "workflow", "artifacts"],
+      "properties": {
+        "artifacts": {"type": "array", "minItems": 1}
+      }
+    },
+    "assurance": {
+      "type": "object",
+      "required": ["tests", "securityAutomation", "requiredDocumentation"]
+    }
+  },
+  "additionalProperties": false
+}
