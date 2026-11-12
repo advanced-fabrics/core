@@ -1,0 +1,27 @@
+# Minimal external-user profile. This enables observation only: it does not
+# change routes, peers, DNS, Gateway objects, host policy rules, or routers.
+advancedFabric:
+  enabled: true
+  mode: observe-only
+  applyEnabled: false
+  runtimeNamespace: advanced-fabric
+  componentAPI:
+    publishAssessments: true
+    validitySeconds: 120
+    serviceName: advanced-fabric-observation-api
+    port: 8080
+  networkQuality:
+    enabled: true
+    enforcementEnabled: false
+    # The chart creates a VMServiceScrape only when the CRD is already present.
+    victoriaMetricsServiceScrape: true
+    intervalSeconds: 30
+    timeoutSeconds: 2
+    samples: 3
+    freshnessSeconds: 120
+
+# Provider integrations and mutation surfaces remain explicitly disabled.
+routerOS:
+  enabled: false
+mihomoGateway:
+  enabled: false

@@ -46,6 +46,12 @@ kubectl get advancedfabrics.networking.advfab.org
 kubectl get networkpathassessments.networking.advfab.org
 ```
 
+For the supported external evaluation profile, use
+[`examples/mvp-values.yaml`](examples/mvp-values.yaml) and follow the
+[`External MVP quickstart`](docs/MVP-QUICKSTART.md). The included verifier
+checks the live workload, observe-only safety boundary, Observation API, and
+publication of at least one real node subject.
+
 Installation alone does not authorize network mutation. Guarded apply requires
 an advertised provider capability, explicit policy, RBAC, and authenticated
 identity.

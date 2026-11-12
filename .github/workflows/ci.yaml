@@ -20,6 +20,11 @@ jobs:
       - run: python scripts/validate_component_standard.py
       - run: helm lint charts/re8ch-advanced-fabric
       - run: helm template advanced-fabric charts/re8ch-advanced-fabric --namespace advanced-fabric >/dev/null
+      - name: Render external MVP profile
+        run: >-
+          helm template advanced-fabric charts/re8ch-advanced-fabric
+          --namespace advanced-fabric
+          --values examples/mvp-values.yaml >/dev/null
       - name: Render network quality and DNS shadow provider
         run: >-
           helm template advanced-fabric charts/re8ch-advanced-fabric --namespace kube-system
