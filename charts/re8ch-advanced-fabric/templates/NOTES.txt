@@ -8,6 +8,11 @@ No FRR, nftables, policy-rule, ASN or neighbor mutation is enabled unless both:
 
 Inspect status:
 
-  kubectl get advancedfabric advanced-fabric -o yaml
+  kubectl get advancedfabric.{{ .Values.advancedFabric.apiGroup }} {{ .Values.advancedFabric.instanceName }} -o yaml
   kubectl get trafficpolicies.networking.advfab.org -A
-  kubectl -n {{ .Values.advancedFabric.runtimeNamespace }} get pods -l app.kubernetes.io/part-of=advanced-fabric
+  kubectl -n {{ .Values.advancedFabric.runtimeNamespace }} get pods \
+    -l 'app.kubernetes.io/name in (advanced-fabric-controller,advanced-fabric-agent,advanced-fabric-pod-conformance)'
+
+Verify the public observation path:
+
+  ./scripts/verify_mvp.sh {{ .Values.advancedFabric.runtimeNamespace }}
