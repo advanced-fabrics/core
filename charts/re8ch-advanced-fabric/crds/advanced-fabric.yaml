@@ -330,6 +330,7 @@ spec:
                 nodeReady: {type: boolean, nullable: true}
                 collectorEpoch: {type: string}
                 serviceEvidence: {type: object, x-kubernetes-preserve-unknown-fields: true}
+                allocationEvidence: {type: object, x-kubernetes-preserve-unknown-fields: true}
                 dependencyEvidence:
                   type: object
                   properties:

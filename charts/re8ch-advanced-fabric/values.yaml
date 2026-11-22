@@ -60,6 +60,8 @@ advancedFabric:
   weightedEcmp:
     enabled: false
   controller:
+    # Optional read-only allocation evidence; never writes IPAM or routes.
+    observeCiliumAllocations: false
     replicas: 1
     pdbMinAvailable: 0
     useNodeLocalAPI: false

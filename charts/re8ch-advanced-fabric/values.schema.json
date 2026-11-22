@@ -49,6 +49,7 @@
         "controller": {
           "type": "object",
           "properties": {
+            "observeCiliumAllocations": {"type": "boolean"},
             "replicas": {"type": "integer", "minimum": 1},
             "pdbMinAvailable": {"type": "integer", "minimum": 0},
             "useNodeLocalAPI": {"type": "boolean"},

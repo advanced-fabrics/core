@@ -7,6 +7,11 @@ apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
 metadata: {name: advanced-fabric}
 rules:
+{{- if .Values.advancedFabric.controller.observeCiliumAllocations }}
+  - apiGroups: [cilium.io]
+    resources: [ciliumnodes]
+    verbs: [get, list]
+{{- end }}
   - apiGroups: [""]
     resources: [nodes, pods, services]
     verbs: [get, list, watch]
