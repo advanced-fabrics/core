@@ -12,6 +12,10 @@ import urllib.error
 import subprocess
 import tempfile
 import yaml
+import http.server
+import threading
+import urllib.request
+from types import SimpleNamespace
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -100,6 +104,37 @@ class AmongTLSContract(unittest.TestCase):
         self.assertEqual(P['planned_tls_targets'](plan, NOW)[0]['endpoint'], '192.0.2.1')
         self.assertEqual(P['planned_tls_targets'](plan, NOW + 10), [])
         self.assertEqual(P['planned_tls_targets'](None, NOW), [])
+    def test_status_http_merge_patch_removes_previous_validity(self):
+        """Exercise actual request serialization and kubectl's local merge implementation."""
+        captured = []
+        class API(http.server.BaseHTTPRequestHandler):
+            def do_PATCH(self):
+                captured.append((self.path, self.headers['Content-Type'], self.rfile.read(int(self.headers['Content-Length']))))
+                self.send_response(200); self.end_headers(); self.wfile.write(b'{}')
+            def log_message(self, *_): pass
+        server = http.server.ThreadingHTTPServer(('127.0.0.1', 0), API)
+        thread = threading.Thread(target=server.serve_forever, daemon=True); thread.start()
+        ns = load('controller.py', {'request', 'custom_upsert'})
+        ns.update(LEADER=SimpleNamespace(may_write=lambda: True), TOKEN='fixture-only',
+                  BASE='http://127.0.0.1:' + str(server.server_port), CONTEXT=None, LEGACY_API_GROUP='')
+        _, failures = self.resolve(now=NOW + 60)
+        document, status = list(C['withdrawn_among_tls_documents'](failures, ['r640']))[0]
+        try:
+            ns['custom_upsert']('networkpathassessments', document, status, 'v1alpha2')
+        finally:
+            server.shutdown(); server.server_close(); thread.join()
+        path, content_type, patch = captured[-1]
+        self.assertTrue(path.endswith('/status'))
+        self.assertEqual(content_type, 'application/merge-patch+json')
+        previous = dict(document, status={'state': 'Ready', 'observedAt': AT, 'validUntil': AT})
+        with tempfile.NamedTemporaryFile(mode='w', suffix='.json') as file:
+            json.dump(previous, file); file.flush()
+            output = subprocess.check_output(['kubectl', 'patch', '--local', '-f', file.name,
+                '--type=merge', '--patch-file=/dev/stdin', '-o', 'json'], input=patch)
+        merged = json.loads(output)['status']
+        self.assertNotIn('validUntil', merged)
+        self.assertNotIn('observedAt', merged)
+        self.assertEqual(merged['state'], 'Stale')
     def test_old_endpoint_measurements_cannot_make_new_revision_ready(self):
         old = self.resolve()[0][0]
         record = {'measurementDefinitionId': 'tls-transfer-v1', 'targetId': 'canary',

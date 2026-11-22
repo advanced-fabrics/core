@@ -463,7 +463,7 @@ def assigned_tasks():
         tasks = [task for task in plan.get("tasks", []) if task.get("sourceNode") == NODE and
                  task.get("sourcePlane") == PLANE]
         return plan.get("generation"), tasks, plan
-    except (urllib.error.HTTPError, KeyError, ValueError, json.JSONDecodeError):
+    except (urllib.error.URLError, OSError, KeyError, TypeError, AttributeError, ValueError):
         return None, [], None
 
 

@@ -847,6 +847,7 @@ def tls_service_evidence_documents(targets, active_nodes, measurements, validity
                               "path": target.get("path", "/version"), "paddingBytes": sorted(sizes)}}}
             document["spec"]["scope"]["targetConfigurationDigest"] = configuration_digest
             status = {"state": "Ready" if succeeded else "Partial" if records else "Unknown",
+                "observedAt": None, "validUntil": None,
                 "pathEvidence": {"reachable": transferred if complete else None, "currentPathMeasured": complete,
                                  "freshPlanes": sorted({plane for plane, _ in seen}),
                                  "missingEvidence": [] if complete else ["complete-host-and-pod-tls-transfers"]},
@@ -1205,10 +1206,12 @@ def reconcile():
                          fabric["metadata"].get("generation", 0))
     among_targets, among_failures = resolve_among_tls_targets(
         quality_standard.get("amongTlsTargets", []), lambda path: request("GET", path), time.time())
+    plan_now = time.time()
+    plan["generatedAt"] = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(plan_now))
     plan["tlsTargets"] = [{key: value for key, value in target.items() if key != "_expiresAt"}
                           for target in among_targets]
     plan["tlsResolutionErrors"] = among_failures
-    plan["tlsValidUntil"] = min([time.time() + int(quality_standard.get("freshnessSeconds", 120))] +
+    plan["tlsValidUntil"] = min([plan_now + int(quality_standard.get("freshnessSeconds", 120))] +
                                 [target["_expiresAt"] for target in among_targets])
     inferences = node_inferences(plan, probe_configmaps, quality_standard)
     upsert_configmap("advanced-fabric-evidence-plan",
