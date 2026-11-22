@@ -106,3 +106,25 @@ class TLSServiceEvidenceTest(unittest.TestCase):
             _, status = assess(dict(TARGET, **changes))
             assert status["state"] == "Unknown", changes
             assert status["conditions"][0]["status"] == "False", changes
+
+
+    def test_executed_transport_failures_are_preserved_instead_of_disappearing(self):
+        data = measurements()
+        for measurement in data.values():
+            for row in measurement["tlsTransfers"]:
+                row.update(success=False, statusCode=None, category="tls")
+        _, status = assess(data=data)
+        assert status["state"] == "Partial"
+        assert status["serviceEvidence"]["complete"] is True
+        assert len(status["serviceEvidence"]["transfers"]) == 4
+        assert status["pathEvidence"]["reachable"] is False
+
+    def test_ipv6_configuration_and_collector_canonicalization_match(self):
+        target = dict(TARGET, endpoint="2001:0db8:0000:0000:0000:0000:0000:0001")
+        data = measurements()
+        for measurement in data.values():
+            for row in measurement["tlsTransfers"]:
+                row.update(endpoint="2001:db8::1", targetConfigurationDigest=ns["tls_target_configuration_digest"](target))
+        document, status = assess(target, data)
+        assert status["state"] == "Ready"
+        assert document["spec"]["scope"]["endpoint"] == "2001:db8::1"

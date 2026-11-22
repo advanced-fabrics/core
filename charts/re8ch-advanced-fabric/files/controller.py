@@ -718,10 +718,10 @@ def tls_service_evidence_documents(targets, active_nodes, measurements, validity
                     if (row.get("measurementDefinitionId") != "tls-transfer-v1" or
                         row.get("targetId") != target["name"] or row.get("sourceNode") != node or
                         row.get("sourcePlane") != plane or row.get("targetService") != target["targetService"] or
-                        row.get("endpoint") != target.get("endpoint") or row.get("port") != target.get("port", 443) or
+                        row.get("endpoint") != str(ipaddress.ip_address(target["endpoint"])) or row.get("port") != target.get("port", 443) or
                         row.get("serverName") != target.get("serverName") or row.get("path") != target.get("path", "/version") or
                         row.get("targetConfigurationDigest") != configuration_digest or
-                        row.get("statusCode") not in target.get("expectedStatuses", [200]) or
+                        (row.get("success") is True and row.get("statusCode") not in target.get("expectedStatuses", [200])) or
                         row.get("paddingBytes") not in sizes):
                         continue
                     try:
@@ -745,7 +745,7 @@ def tls_service_evidence_documents(targets, active_nodes, measurements, validity
                     "networking.advfab.org/subject-kind": "Service"}},
                 "spec": {"subjectRef": {"apiVersion": "v1", "kind": "Service", "namespace": namespace, "name": service_name},
                     "scope": {"plane": "host-and-pod", "direction": "bidirectional", "protocol": "tcp",
-                              "sourceNode": node, "targetId": target["name"], "endpoint": target.get("endpoint"),
+                              "sourceNode": node, "targetId": target["name"], "endpoint": str(ipaddress.ip_address(target["endpoint"])),
                               "port": target.get("port", 443), "serverName": target.get("serverName"),
                               "path": target.get("path", "/version"), "paddingBytes": sorted(sizes)}}}
             document["spec"]["scope"]["targetConfigurationDigest"] = configuration_digest
