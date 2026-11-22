@@ -2,8 +2,8 @@ apiVersion: v2
 name: advanced-fabric
 description: Public, observe-first Cilium and FRR fabric control and network evidence API
 type: application
-version: 1.0.0-rc.14
-appVersion: "1.0.0-rc.14"
+version: 1.0.0-rc.15
+appVersion: "1.0.0-rc.15"
 kubeVersion: ">=1.30.0-0"
 home: https://advfab.org
 sources:
@@ -21,6 +21,10 @@ annotations:
   artifacthub.io/operatorCapabilities: deep insights
   artifacthub.io/containsSecurityUpdates: "false"
   artifacthub.io/changes: |
+    - kind: added
+      description: Publish scoped Cilium allocation and bounded anonymous TLS transfer evidence, including fresh Among-discovered endpoints.
+    - kind: fixed
+      description: Preserve rendered DNS, virtual Ingress and observation API configuration in the AdvancedFabric CRD.
     - kind: fixed
       description: Coalesce observation API reads, retry Kubernetes throttling, and expose complete path, DNS and DoH agent evidence in node snapshots.
     - kind: fixed

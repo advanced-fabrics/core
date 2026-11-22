@@ -1,5 +1,19 @@
 # Changelog
 
+## 1.0.0-rc.15
+
+- Observe current CiliumNode pool allocations separately from declared topology;
+  missing or contradictory allocation evidence remains explicit.
+- Measure bounded anonymous HTTPS transfers with strict CA and SNI checks,
+  request/response limits, source assignment and per-service latency budgets.
+  Host and pod evidence remains scoped to the configured endpoint and target
+  identity; it does not authorize network changes.
+- Resolve explicitly reviewed Among advertisement/import references into fresh
+  TLS targets bound to the current fabric UID, generation and configuration;
+  withdraw evidence when endpoint identity or validity changes.
+- Preserve the chart's existing DNS, virtual Ingress and observation API fields
+  in the AdvancedFabric structural CRD instead of pruning them on write.
+
 ## 1.0.0-rc.14
 
 - Coalesce concurrent observation API cache misses and reuse short-lived

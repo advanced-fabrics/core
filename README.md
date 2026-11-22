@@ -21,7 +21,7 @@ Public defaults are disabled and contain no private inventory or credentials.
 ```sh
 helm upgrade --install advanced-fabric \
   oci://ghcr.io/advanced-fabrics/charts/advanced-fabric \
-  --version 1.0.0-rc.14 \
+  --version 1.0.0-rc.15 \
   --namespace advanced-fabric --create-namespace
 ```
 
@@ -38,7 +38,7 @@ advancedFabric:
 ```sh
 helm upgrade --install advanced-fabric \
   oci://ghcr.io/advanced-fabrics/charts/advanced-fabric \
-  --version 1.0.0-rc.14 \
+  --version 1.0.0-rc.15 \
   --namespace advanced-fabric --create-namespace \
   --values my-values.yaml
 
