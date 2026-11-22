@@ -13,6 +13,7 @@ import math
 import datetime
 import threading
 import ipaddress
+import re
 from leader_lease import LeaderLease
 
 
@@ -682,6 +683,102 @@ def path_evidence_document(node, node_ready, status, measurements, validity_seco
     return document, result
 
 
+def resolve_among_tls_targets(configured, get, now):
+    """Resolve exact reviewed references once per round; never retain stale endpoints."""
+    cache, resolved, failures = {}, [], []
+    def fetch(path):
+        if path not in cache:
+            try:
+                cache[path] = get(path)
+            except (urllib.error.URLError, TimeoutError, OSError, ValueError):
+                cache[path] = None
+        return cache[path]
+    for target in configured[:4]:
+        reason = "AmongReferenceInvalid"
+        try:
+            d = target["discovery"]
+            a, i = d["advertisementRef"], d["importedServiceRef"]
+            service = re.fullmatch(r"spiffe://[^/]+/ns/([a-z0-9.-]+)/service/([a-z0-9.-]+)", d["serviceRef"])
+            if (d["source"] != "AmongCluster" or not service or a["namespace"] != i["namespace"] or
+                    any(not re.fullmatch(r"[a-z0-9][a-z0-9.-]*", ref[key])
+                        for ref in (a, i) for key in ("namespace", "name", "uid"))):
+                raise ValueError(reason)
+            base = "/apis/peering.re8ch.com/v1alpha1/namespaces/" + a["namespace"]
+            ad = fetch(base + "/serviceadvertisements/" + a["name"])
+            imported = fetch(base + "/importedservices/" + i["name"])
+            if not ad or not imported:
+                raise ValueError("AmongReadFailed")
+            am, spec = ad["metadata"], ad["spec"]
+            im, isp, status = imported["metadata"], imported["spec"], imported["status"]
+            if am.get("deletionTimestamp") or im.get("deletionTimestamp") or spec.get("revoked") or isp.get("suspended"):
+                raise ValueError("AmongWithdrawn")
+            if (any(meta.get(key) != ref[key] for meta, ref in ((am, a), (im, i))
+                    for key in ("namespace", "name", "uid")) or spec["publisherRef"] != d["clusterRef"] or
+                    spec["serviceIdentity"] != d["serviceRef"] or spec["protocol"] != d["protocol"] or
+                    not d["protocol"] or isp["advertisementRef"] != a["name"] or isp["peerRef"] not in spec["targetPeers"]):
+                raise ValueError("AmongIdentityMismatch")
+            published_text = am["annotations"]["peering.re8ch.com/last-published-at"]
+            if not published_text.endswith("Z"):
+                raise ValueError("AmongValidityInvalid")
+            published, ttl = parse_time(published_text), spec["ttlSeconds"]
+            if type(ttl) is not int or not 30 <= ttl <= 86400 or not 0 < published <= now < published + ttl:
+                raise ValueError("AmongExpiredOrInvalid")
+            if (status["state"] != "Ready" or status["observedGeneration"] != im["generation"] or
+                    status["advertisementUID"] != am["uid"] or status["advertisementGeneration"] != am["generation"] or
+                    status["publicIngress"] != spec["publicIngress"]):
+                raise ValueError("AmongImportNotObserved")
+            endpoints = spec["publicIngress"]["endpoints"]
+            if not isinstance(endpoints, list) or not 1 <= len(endpoints) <= 32:
+                raise ValueError("AmongEndpointInvalid")
+            ids = [entry["id"] for entry in endpoints]
+            if any(not isinstance(key, str) or not key for key in ids) or len(set(ids)) != len(ids):
+                raise ValueError("AmongEndpointInvalid")
+            endpoint = next(entry for entry in endpoints if entry["id"] == d["endpointId"])
+            address = ipaddress.ip_address(endpoint["address"])
+            if (endpoint["protocol"] != "https" or address.is_loopback or address.is_unspecified or
+                    address.is_multicast or address.is_link_local or type(endpoint["port"]) is not int or
+                    not 1 <= endpoint["port"] <= 65535 or
+                    not re.fullmatch(r"[a-zA-Z0-9][a-zA-Z0-9.-]{0,251}[a-zA-Z0-9]", endpoint["hostname"]) or
+                    not re.fullmatch(r"/[a-zA-Z0-9/._~-]{0,511}", endpoint["path"]) or
+                    any(not isinstance(endpoint[key], str) or not 1 <= len(endpoint[key]) <= limit
+                        for key, limit in (("revision", 128), ("site", 63), ("region", 63)))):
+                raise ValueError("AmongEndpointInvalid")
+            version = [a["uid"], i["uid"], d["endpointId"], endpoint["revision"]]
+            resolved.append({**{key: value for key, value in target.items() if key != "discovery"},
+                "targetService": "/".join(service.groups()), "endpoint": str(address),
+                "port": endpoint["port"], "serverName": endpoint["hostname"], "path": endpoint["path"],
+                "pathId": "among-" + hashlib.sha256(json.dumps(version).encode()).hexdigest()[:32],
+                "_expiresAt": published + ttl})
+            continue
+        except (KeyError, TypeError, ValueError, StopIteration) as error:
+            reason = str(error) if isinstance(error, ValueError) and str(error).startswith("Among") else reason
+        failures.append({"name": target.get("name"), "sourceNodes": target.get("sourceNodes", []),
+                         "serviceRef": target.get("discovery", {}).get("serviceRef", ""), "reason": reason})
+    return resolved, failures
+
+
+def withdrawn_among_tls_documents(failures, active_nodes):
+    for target in failures:
+        service = re.fullmatch(r"spiffe://[^/]+/ns/([a-z0-9.-]+)/service/([a-z0-9.-]+)", target["serviceRef"])
+        if not service:
+            continue
+        for node in sorted(set(target["sourceNodes"]) & set(active_nodes)):
+            name = "tls-" + hashlib.sha256((node + "/" + target["name"]).encode()).hexdigest()[:24]
+            document = {"apiVersion": API_GROUP + "/v1alpha2", "kind": "NetworkPathAssessment",
+                "metadata": {"name": name, "labels": {"app.kubernetes.io/managed-by": MANAGED_BY,
+                    "networking.advfab.org/subject-kind": "Service"}},
+                "spec": {"subjectRef": {"apiVersion": "v1", "kind": "Service",
+                    "namespace": service.group(1), "name": service.group(2)},
+                    "scope": {"plane": "host-and-pod", "direction": "bidirectional", "protocol": "tcp",
+                              "sourceNode": node, "targetId": target["name"]}}}
+            yield document, {"state": "Stale", "observedAt": None, "validUntil": None,
+                "pathEvidence": {"reachable": False,
+                "currentPathMeasured": False, "missingEvidence": [target["reason"]]},
+                "serviceEvidence": {"definition": "tls-transfer-v1", "complete": False, "transfers": []},
+                "conditions": [condition("EvidenceReady", False, target["reason"],
+                                         "Among endpoint unavailable; prior endpoint evidence withdrawn")]}
+
+
 def tls_target_configuration_digest(target):
     identity = {"name": target["name"], "targetService": target["targetService"],
         "endpoint": str(ipaddress.ip_address(target["endpoint"])), "port": target.get("port", 443),
@@ -763,7 +860,7 @@ def tls_service_evidence_documents(targets, active_nodes, measurements, validity
             if observed:
                 status["observedAt"] = observed
                 status["validUntil"] = datetime.datetime.fromtimestamp(
-                    parse_time(observed) + validity_seconds, datetime.timezone.utc).isoformat().replace("+00:00", "Z")
+                    min(parse_time(observed) + validity_seconds, target.get("_expiresAt", float("inf"))), datetime.timezone.utc).isoformat().replace("+00:00", "Z")
             yield document, status
 
 
@@ -1106,6 +1203,13 @@ def reconcile():
         request("POST", "/api/v1/namespaces/%s/configmaps" % NAMESPACE, desired)
     plan = evidence_plan(spec["nodes"], node_objects, probe_configmaps, quality_standard,
                          fabric["metadata"].get("generation", 0))
+    among_targets, among_failures = resolve_among_tls_targets(
+        quality_standard.get("amongTlsTargets", []), lambda path: request("GET", path), time.time())
+    plan["tlsTargets"] = [{key: value for key, value in target.items() if key != "_expiresAt"}
+                          for target in among_targets]
+    plan["tlsResolutionErrors"] = among_failures
+    plan["tlsValidUntil"] = min([time.time() + int(quality_standard.get("freshnessSeconds", 120))] +
+                                [target["_expiresAt"] for target in among_targets])
     inferences = node_inferences(plan, probe_configmaps, quality_standard)
     upsert_configmap("advanced-fabric-evidence-plan",
                      {"app.kubernetes.io/name": MANAGED_BY,
@@ -1155,7 +1259,9 @@ def reconcile():
                 node, ready.get(node["name"], False), statuses.get(node["name"], {}), measurement_state, validity)
             custom_upsert("networkpathassessments", document, assessment_status, "v1alpha2")
         for document, assessment_status in tls_service_evidence_documents(
-                quality_standard.get("tlsTargets", []), node_index, measurement_state, validity):
+                quality_standard.get("tlsTargets", []) + among_targets, node_index, measurement_state, validity):
+            custom_upsert("networkpathassessments", document, assessment_status, "v1alpha2")
+        for document, assessment_status in withdrawn_among_tls_documents(among_failures, node_index):
             custom_upsert("networkpathassessments", document, assessment_status, "v1alpha2")
     for document, triangle_status in triangle_documents():
         custom_upsert("tradeofftriangles", document, triangle_status)
