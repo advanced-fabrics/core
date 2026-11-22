@@ -175,6 +175,52 @@ def observations():
     return cached("observations", load_observations)
 
 
+
+def service_assessments():
+    # One bounded read through the existing CRD API, not a second evidence store.
+    def load():
+        response = kube_get("/apis/%s/v1alpha2/networkpathassessments?limit=200" % API_GROUP)
+        return {"items": [item for item in response.get("items", [])
+                          if item.get("spec", {}).get("subjectRef", {}).get("kind") == "Service"
+                          and item.get("spec", {}).get("subjectRef", {}).get("apiVersion") == "v1"
+                          and all(isinstance(item["spec"]["subjectRef"].get(key), str)
+                                  and item["spec"]["subjectRef"][key] for key in ("namespace", "name"))],
+                "truncated": bool(response.get("metadata", {}).get("continue"))}
+    return cached("service-assessments", load)
+
+
+def service_snapshot(namespace, name, now=None):
+    now = time.time() if now is None else now
+    document = service_assessments()
+    assessments = []
+    for item in document["items"]:
+        subject = item.get("spec", {}).get("subjectRef", {})
+        if subject.get("namespace") != namespace or subject.get("name") != name:
+            continue
+        metadata, spec, status = item.get("metadata", {}), item.get("spec", {}), item.get("status", {})
+        try:
+            observed, expires = parse_time(status["observedAt"]), parse_time(status["validUntil"])
+            fresh = 0 < observed <= now < expires
+        except (KeyError, TypeError, ValueError):
+            fresh = False
+        ready = next((value for value in status.get("conditions", [])
+                      if value.get("type") == "EvidenceReady"), {})
+        state = "Deleting" if metadata.get("deletionTimestamp") else "Stale" if not fresh else status.get("state", "Unknown")
+        assessments.append({"assessmentRef": {key: metadata[key] for key in
+                            ("name", "uid", "generation", "resourceVersion") if key in metadata},
+                            "subjectRef": subject, "scope": spec.get("scope", {}),
+                            "observedAt": status.get("observedAt"), "validUntil": status.get("validUntil"),
+                            "state": state, "fresh": fresh,
+                            "reportedEvidenceReady": ready.get("status") == "True",
+                            "condition": ready, "serviceEvidence": status.get("serviceEvidence"),
+                            "pathEvidence": status.get("pathEvidence")})
+    assessments.sort(key=lambda value: (value["scope"].get("sourceNode", ""),
+                                       value["scope"].get("targetId", ""), value["assessmentRef"].get("name", "")))
+    return {"apiVersion": "v1", "kind": "Service", "namespace": namespace, "name": name,
+            "state": "Observed" if assessments else "Unknown", "assessments": assessments,
+            "truncated": document["truncated"]}
+
+
 def load_relationship_documents():
     path = "/apis/%s/v1alpha1/tradeofftriangles" % API_GROUP
     return kube_get(path).get("items", [])
@@ -199,6 +245,18 @@ class Handler(BaseHTTPRequestHandler):
         try:
             if url.path == "/healthz":
                 return self.send_json(200, {"ready": True, "apiVersion": "v1"})
+            if url.path.startswith("/api/v1/subjects/service/") and url.path.endswith("/snapshot"):
+                parts = url.path.split("/")
+                if len(parts) != 8 or not parts[5] or not parts[6]:
+                    return self.send_json(400, {"error": "Service namespace and name required"})
+                return self.send_json(200, service_snapshot(urllib.parse.unquote(parts[5]), urllib.parse.unquote(parts[6])))
+            if url.path == "/api/v1/subjects" and query.get("kind") == ["Service"]:
+                document = service_assessments()
+                subjects = {(item.get("spec", {}).get("subjectRef", {}).get("namespace"),
+                             item.get("spec", {}).get("subjectRef", {}).get("name")) for item in document["items"]}
+                return self.send_json(200, {"apiVersion": "v1", "truncated": document["truncated"], "items": [
+                    {"kind": "Service", "namespace": namespace, "name": name}
+                    for namespace, name in sorted(subjects) if namespace and name]})
             data = observations().get("nodes", {})
             if url.path == "/api/v1/subjects":
                 return self.send_json(200, {"apiVersion": "v1", "items": [
