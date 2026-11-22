@@ -97,3 +97,68 @@ def test_observation_cache_coalesces_page_requests(monkeypatch):
     assert observation_api.observations() == {"nodes": {}}
     assert observation_api.observations() == {"nodes": {}}
     assert calls == [1]
+
+
+def service_npa():
+    return {"metadata": {"name": "tls-scoped", "uid": "npa-uid", "generation": 4, "resourceVersion": "51"},
+            "spec": {"subjectRef": {"apiVersion": "v1", "kind": "Service", "namespace": "canary", "name": "api"},
+                     "scope": {"sourceNode": "domain-ex", "targetId": "canary-cn", "endpoint": "192.0.2.1",
+                               "paddingBytes": [0, 2048], "targetConfigurationDigest": "digest"}},
+            "status": {"state": "Ready", "observedAt": "2026-11-23T00:00:00Z", "validUntil": "2026-11-23T00:01:00Z",
+                       "conditions": [{"type": "EvidenceReady", "status": "True", "reason": "Complete"}],
+                       "serviceEvidence": {"definition": "tls-transfer-v1", "complete": True},
+                       "pathEvidence": {"currentPathMeasured": True, "reachable": True}}}
+
+
+def test_service_snapshot_retains_actual_scope_revisions_and_independent_expiry(monkeypatch):
+    item = service_npa()
+    monkeypatch.setattr(observation_api, "service_assessments", lambda: {"items": [item], "truncated": False})
+    now = observation_api.parse_time("2026-11-23T00:00:30Z")
+    result = observation_api.service_snapshot("canary", "api", now)
+    assessment = result["assessments"][0]
+    assert assessment["assessmentRef"]["uid"] == "npa-uid"
+    assert assessment["scope"] == item["spec"]["scope"]
+    assert assessment["fresh"] is True
+    expired = observation_api.service_snapshot("canary", "api", now + 60)["assessments"][0]
+    assert expired["state"] == "Stale" and expired["fresh"] is False
+    # Raw producer condition is never renamed to an admission/eligibility verdict.
+    assert expired["reportedEvidenceReady"] is True
+    assert "eligible" not in expired
+    assert observation_api.service_snapshot("other", "api", now)["state"] == "Unknown"
+    item["metadata"]["deletionTimestamp"] = "2026-11-23T00:00:30Z"
+    assert observation_api.service_snapshot("canary", "api", now)["assessments"][0]["state"] == "Deleting"
+
+
+def test_service_reader_uses_formal_api_and_preserves_incomplete_list(monkeypatch):
+    observation_api._CACHE.clear()
+    paths = []
+    monkeypatch.setattr(observation_api, "kube_get", lambda path: paths.append(path) or
+                        {"items": [service_npa(), {"spec": {"subjectRef": {"kind": "Node"}}}],
+                         "metadata": {"continue": "next"}})
+    document = observation_api.service_assessments()
+    assert len(document["items"]) == 1 and document["truncated"] is True
+    assert paths == ["/apis/networking.advfab.org/v1alpha2/networkpathassessments?limit=200"]
+
+
+def test_service_http_contract_does_not_require_node_inventory(monkeypatch):
+    import json
+    import threading
+    import urllib.request
+    from http.server import ThreadingHTTPServer
+    monkeypatch.setattr(observation_api, "service_assessments", lambda: {"items": [service_npa()], "truncated": False})
+    monkeypatch.setattr(observation_api, "observations", lambda: (_ for _ in ()).throw(AssertionError("local Node lookup")))
+    server = ThreadingHTTPServer(("127.0.0.1", 0), observation_api.Handler)
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    try:
+        base = "http://127.0.0.1:%d" % server.server_port
+        with urllib.request.urlopen(base + "/api/v1/subjects?kind=Service") as response:
+            assert json.load(response)["items"] == [{"kind": "Service", "namespace": "canary", "name": "api"}]
+        with urllib.request.urlopen(base + "/api/v1/subjects/service/canary/api/snapshot") as response:
+            document = json.load(response)
+        assert document["kind"] == "Service"
+        assert document["assessments"][0]["scope"]["sourceNode"] == "domain-ex"
+    finally:
+        server.shutdown()
+        server.server_close()
+        thread.join(timeout=2)
