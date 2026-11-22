@@ -1,4 +1,42 @@
 {{- if .Values.advancedFabric.enabled }}
+{{- if gt (add (len .Values.advancedFabric.networkQuality.tlsTargets) (len .Values.advancedFabric.networkQuality.amongTlsTargets)) 4 }}
+{{- fail "tlsTargets and amongTlsTargets together must not exceed four targets" }}
+{{- end }}
+{{- $root := . }}
+{{- $targetNames := dict }}
+{{- range concat .Values.advancedFabric.networkQuality.tlsTargets .Values.advancedFabric.networkQuality.amongTlsTargets }}
+{{- if hasKey $targetNames .name }}
+{{- fail "TLS target names must be unique across static and Among targets" }}
+{{- end }}
+{{- $_ := set $targetNames .name true }}
+{{- end }}
+{{- range $index, $target := .Values.advancedFabric.networkQuality.amongTlsTargets }}
+{{- $ad := $target.discovery.advertisementRef }}
+{{- $import := $target.discovery.importedServiceRef }}
+{{- if ne $ad.namespace $import.namespace }}
+{{- fail "Among advertisement and imported service must have the same namespace" }}
+{{- end }}
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata: {name: advanced-fabric-among-{{ $index }}, namespace: {{ $ad.namespace }}}
+rules:
+  - apiGroups: [peering.re8ch.com]
+    resources: [serviceadvertisements]
+    resourceNames: [{{ $ad.name | quote }}]
+    verbs: [get]
+  - apiGroups: [peering.re8ch.com]
+    resources: [importedservices]
+    resourceNames: [{{ $import.name | quote }}]
+    verbs: [get]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata: {name: advanced-fabric-among-{{ $index }}, namespace: {{ $ad.namespace }}}
+subjects:
+  - {kind: ServiceAccount, name: advanced-fabric, namespace: {{ $root.Values.advancedFabric.runtimeNamespace }}}
+roleRef: {apiGroup: rbac.authorization.k8s.io, kind: Role, name: advanced-fabric-among-{{ $index }}}
+---
+{{- end }}
 apiVersion: v1
 kind: ServiceAccount
 metadata: {name: advanced-fabric, namespace: {{ .Values.advancedFabric.runtimeNamespace }}}

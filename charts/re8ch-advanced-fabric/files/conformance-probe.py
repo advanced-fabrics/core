@@ -291,9 +291,35 @@ def tls_transfer(target, padding, phase_deadline):
     return result
 
 
-def measure_tls_targets():
+def among_tls_plan_identity(fabric):
+    meta = fabric.get("metadata", {})
+    configured = fabric.get("spec", {}).get("networkQuality", {}).get("amongTlsTargets", [])
+    return {"uid": meta.get("uid"), "name": meta.get("name"), "generation": meta.get("generation"),
+            "configurationDigest": hashlib.sha256(json.dumps(configured, sort_keys=True,
+                separators=(",", ":")).encode()).hexdigest()}
+
+
+def planned_tls_targets(plan, now, fabric=None):
+    """A failed/expired plan never reuses the previous dynamic target list."""
+    if not isinstance(plan, dict) or type(plan.get("tlsValidUntil")) not in (int, float):
+        return []
+    if not isinstance(fabric, dict):
+        return []
+    owner = among_tls_plan_identity(fabric)
+    if (not owner["uid"] or not owner["name"] or type(owner["generation"]) is not int or
+            owner["generation"] < 1 or plan.get("tlsOwner") != owner):
+        return []
+    if not now < plan["tlsValidUntil"] or parse_observed_time(plan["generatedAt"]) > now:
+        return []
+    return tls_targets(json.dumps(plan.get("tlsTargets", [])))
+
+
+def measure_tls_targets(plan=None, fabric=None):
     try:
         targets = tls_targets(os.environ.get("TLS_PROBE_TARGETS", "[]"))
+        targets += planned_tls_targets(plan, time.time(), fabric)
+        if len(targets) > 4 or len({target["name"] for target in targets}) != len(targets):
+            raise ValueError("configuration")
     except (ValueError, TypeError, KeyError, OverflowError):
         return [{"measurementDefinitionId": "tls-transfer-v1", "sourceNode": NODE, "sourcePlane": PLANE,
                  "success": False, "state": "Failed", "category": "configuration", "error": "InvalidTargetConfiguration",
@@ -441,7 +467,7 @@ def discover():
                 raise
     alternatives = [item for item in source_spec.get("alternativePaths", []) if item.get("address") and
                     item.get("targetNode") and item.get("targetPlane") in ("host", "pod")]
-    return sorted(targets, key=lambda item: item["node"]), dns_servers, alternatives
+    return sorted(targets, key=lambda item: item["node"]), dns_servers, alternatives, fabric
 
 
 def assigned_tasks():
@@ -450,9 +476,9 @@ def assigned_tasks():
         plan = json.loads(obj.get("data", {}).get("plan.json", "{}"))
         tasks = [task for task in plan.get("tasks", []) if task.get("sourceNode") == NODE and
                  task.get("sourcePlane") == PLANE]
-        return plan.get("generation"), tasks
-    except (urllib.error.HTTPError, KeyError, ValueError, json.JSONDecodeError):
-        return None, []
+        return plan.get("generation"), tasks, plan
+    except (urllib.error.URLError, OSError, KeyError, TypeError, AttributeError, ValueError):
+        return None, [], None
 
 
 def serve():
@@ -469,8 +495,8 @@ def serve():
 def snapshot():
     started_epoch = time.time()
     started_at = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(started_epoch))
-    targets, dns_servers, alternatives = discover()
-    plan_generation, tasks = assigned_tasks()
+    targets, dns_servers, alternatives, fabric = discover()
+    plan_generation, tasks, plan = assigned_tasks()
     requested_targets = {name for task in tasks for name in task.get("targetNodes", [])}
     if requested_targets:
         targets = [target for target in targets if target["node"] in requested_targets]
@@ -501,7 +527,10 @@ def snapshot():
     with concurrent.futures.ThreadPoolExecutor(max_workers=max(1, min(MAX_CONCURRENCY, len(dns_jobs)))) as pool:
         dns = list(pool.map(measure_dns, dns_jobs))
     doh = [doh_measure(DOH_URL)] if DOH_URL else []
-    tls_transfers = measure_tls_targets()
+    # Generic path/DNS work can take most of an advertisement TTL. Read the
+    # current plan immediately before TLS, reusing discover's reviewed AF fact.
+    tls_plan = assigned_tasks()[2] if fabric.get("spec", {}).get("networkQuality", {}).get("amongTlsTargets") else None
+    tls_transfers = measure_tls_targets(tls_plan, fabric)
     path_attempts = sum(item.get("attempts", 0) for item in paths)
     path_successes = sum(item.get("successes", 0) for item in paths)
     successful_p95 = [item["p95Ms"] for item in paths if item.get("p95Ms") is not None]

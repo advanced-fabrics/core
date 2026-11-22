@@ -21,7 +21,7 @@ SOURCE = Path(__file__).resolve().parents[1] / 'charts/re8ch-advanced-fabric/fil
 ns = dict(hashlib=hashlib, json=json, os=os, re=re, ipaddress=ipaddress, socket=socket, ssl=ssl, time=time,
           concurrent=__import__('concurrent'), NODE='node-a', PLANE='pod', TIMEOUT=2,
           TLS_MAX_REQUEST_BYTES=8192, TLS_MAX_RESPONSE_BYTES=32768, TLS_MAX_HEADER_BYTES=8192)
-names = {'tls_target_configuration_digest', 'tls_targets', 'tls_transfer', 'measure_tls_targets', 'prometheus_text',
+names = {'tls_target_configuration_digest', 'tls_targets', 'tls_transfer', 'measure_tls_targets', 'planned_tls_targets', 'parse_observed_time', 'prometheus_text',
          'labels', 'prometheus_escape', 'parse_observed_time'}
 exec(compile(ast.Module(body=[n for n in ast.parse(SOURCE.read_text()).body
                               if isinstance(n, ast.FunctionDef) and n.name in names], type_ignores=[]),
