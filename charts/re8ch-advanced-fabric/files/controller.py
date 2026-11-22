@@ -683,6 +683,14 @@ def path_evidence_document(node, node_ready, status, measurements, validity_seco
     return document, result
 
 
+def among_tls_plan_identity(fabric):
+    meta = fabric.get("metadata", {})
+    configured = fabric.get("spec", {}).get("networkQuality", {}).get("amongTlsTargets", [])
+    return {"uid": meta.get("uid"), "name": meta.get("name"), "generation": meta.get("generation"),
+            "configurationDigest": hashlib.sha256(json.dumps(configured, sort_keys=True,
+                separators=(",", ":")).encode()).hexdigest()}
+
+
 def resolve_among_tls_targets(configured, get, now):
     """Resolve exact reviewed references once per round; never retain stale endpoints."""
     cache, resolved, failures = {}, [], []
@@ -696,6 +704,10 @@ def resolve_among_tls_targets(configured, get, now):
     for target in configured[:4]:
         reason = "AmongReferenceInvalid"
         try:
+            sources = target.get("sourceNodes")
+            if (not isinstance(sources, list) or not 1 <= len(sources) <= 3 or
+                    any(not isinstance(node, str) or not node for node in sources) or len(set(sources)) != len(sources)):
+                raise ValueError("AmongSourceScopeInvalid")
             d = target["discovery"]
             a, i = d["advertisementRef"], d["importedServiceRef"]
             service = re.fullmatch(r"spiffe://[^/]+/ns/([a-z0-9.-]+)/service/([a-z0-9.-]+)", d["serviceRef"])
@@ -1211,6 +1223,7 @@ def reconcile():
     plan["tlsTargets"] = [{key: value for key, value in target.items() if key != "_expiresAt"}
                           for target in among_targets]
     plan["tlsResolutionErrors"] = among_failures
+    plan["tlsOwner"] = among_tls_plan_identity(fabric)
     plan["tlsValidUntil"] = min([plan_now + int(quality_standard.get("freshnessSeconds", 120))] +
                                 [target["_expiresAt"] for target in among_targets])
     inferences = node_inferences(plan, probe_configmaps, quality_standard)

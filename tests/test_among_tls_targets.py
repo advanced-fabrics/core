@@ -16,6 +16,7 @@ import http.server
 import threading
 import urllib.request
 from types import SimpleNamespace
+import concurrent.futures
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -46,9 +47,11 @@ def load(file, names):
                             type_ignores=[]), str(source), 'exec'), ns)
     return ns
 
-C = load('controller.py', {'resolve_among_tls_targets', 'parse_time', 'condition',
+C = load('controller.py', {'among_tls_plan_identity', 'resolve_among_tls_targets', 'parse_time', 'condition',
     'withdrawn_among_tls_documents', 'tls_target_configuration_digest', 'tls_service_evidence_documents'})
-P = load('conformance-probe.py', {'tls_targets', 'planned_tls_targets', 'parse_observed_time'})
+P = load('conformance-probe.py', {'among_tls_plan_identity', 'tls_targets', 'planned_tls_targets', 'parse_observed_time'})
+FABRIC = {'metadata': {'name': 'fabric', 'uid': 'fabric-uid', 'generation': 7},
+          'spec': {'networkQuality': {'amongTlsTargets': [TARGET]}}}
 
 class AmongTLSContract(unittest.TestCase):
     def setUp(self):
@@ -100,10 +103,47 @@ class AmongTLSContract(unittest.TestCase):
     def test_plan_expiry_and_unavailable_plan_never_fall_back(self):
         targets, _ = self.resolve()
         plan = {'generatedAt': AT, 'tlsValidUntil': NOW + 10,
+                'tlsOwner': C['among_tls_plan_identity'](FABRIC),
                 'tlsTargets': [{k: v for k, v in target.items() if k != '_expiresAt'} for target in targets]}
-        self.assertEqual(P['planned_tls_targets'](plan, NOW)[0]['endpoint'], '192.0.2.1')
-        self.assertEqual(P['planned_tls_targets'](plan, NOW + 10), [])
+        self.assertEqual(P['planned_tls_targets'](plan, NOW, FABRIC)[0]['endpoint'], '192.0.2.1')
+        self.assertEqual(P['planned_tls_targets'](plan, NOW + 10, FABRIC), [])
         self.assertEqual(P['planned_tls_targets'](None, NOW), [])
+        for field, value in [('uid', 'replacement'), ('name', 'other'), ('generation', 8)]:
+            changed = copy.deepcopy(FABRIC); changed['metadata'][field] = value
+            self.assertEqual(P['planned_tls_targets'](plan, NOW, changed), [])
+        changed = copy.deepcopy(FABRIC)
+        changed['spec']['networkQuality']['amongTlsTargets'][0]['sourceNodes'] = ['other']
+        self.assertEqual(P['planned_tls_targets'](plan, NOW, changed), [])
+        self.assertEqual(P['planned_tls_targets'](plan, NOW, {}), [])
+    def test_empty_dynamic_scope_is_rejected_without_any_reference_reads(self):
+        target = copy.deepcopy(TARGET); target['sourceNodes'] = []
+        targets, failures = self.resolve([target])
+        self.assertEqual(targets, [])
+        self.assertEqual(failures[0]['reason'], 'AmongSourceScopeInvalid')
+        self.assertEqual(self.calls, [])
+    def test_snapshot_refreshes_plan_after_slow_generic_phase_reusing_discovered_af(self):
+        targets, _ = self.resolve()
+        plan = {'generatedAt': AT, 'tlsValidUntil': NOW + 10,
+                'tlsOwner': C['among_tls_plan_identity'](FABRIC),
+                'tlsTargets': [{k: v for k, v in target.items() if k != '_expiresAt'} for target in targets]}
+        epoch, reads, observed = [NOW], [], []
+        def assigned():
+            reads.append(epoch[0])
+            return 7, [], dict(plan, tlsValidUntil=epoch[0] + 10)
+        def doh(_):
+            epoch[0] += 70
+            return {}
+        def tls(plan, fabric):
+            observed.extend(P['planned_tls_targets'](plan, epoch[0], fabric))
+            return []
+        ns = load('conformance-probe.py', {'snapshot'})
+        ns.update(time=SimpleNamespace(time=lambda: epoch[0], strftime=time.strftime, gmtime=time.gmtime),
+            discover=lambda: ([], [], [], FABRIC), assigned_tasks=assigned, concurrent=concurrent,
+            measure_tls_targets=tls, doh_measure=doh, DOH_URL='fixture', MAX_CONCURRENCY=1,
+            INTERVAL=30, HISTORY=[], HISTORY_SIZE=3, history_summary=lambda _: {}, NODE='r640', PLANE='pod')
+        ns['snapshot']()
+        self.assertEqual(reads, [NOW, NOW + 70])
+        self.assertEqual(observed[0]['endpoint'], '192.0.2.1')
     def test_status_http_merge_patch_removes_previous_validity(self):
         """Exercise actual request serialization and kubectl's local merge implementation."""
         captured = []
@@ -161,5 +201,12 @@ class AmongTLSContract(unittest.TestCase):
         self.assertEqual(role['rules'], [
             {'apiGroups': ['peering.re8ch.com'], 'resources': ['serviceadvertisements'], 'resourceNames': ['ad'], 'verbs': ['get']},
             {'apiGroups': ['peering.re8ch.com'], 'resources': ['importedservices'], 'resourceNames': ['import'], 'verbs': ['get']}])
+        invalid = copy.deepcopy(values)
+        invalid['advancedFabric']['networkQuality']['amongTlsTargets'][0]['sourceNodes'] = []
+        with tempfile.NamedTemporaryFile(mode='w', suffix='.yaml') as file:
+            yaml.safe_dump(invalid, file); file.flush()
+            rejected = subprocess.run(['helm', 'template', 'test', str(chart), '-f', file.name], capture_output=True, text=True)
+        self.assertNotEqual(rejected.returncode, 0)
+        self.assertIn('sourceNodes', rejected.stderr)
 
 if __name__ == '__main__': unittest.main()

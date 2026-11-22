@@ -33,3 +33,22 @@ canary: observe primary address A, change the source primary to B without changi
 consumer references, verify a new plan/digest/probe/NPA, then revoke or expire the
 advertisement and verify the old Ready evidence is withdrawn. Static readiness,
 source CI, or a successful chart publication does not establish that live result.
+
+Each dynamic plan also binds the AdvancedFabric UID, name, generation and a
+canonical digest of `amongTlsTargets`. The collector reuses the AF object already
+read by discovery and rejects a mismatching owner/configuration. Dynamic targets
+require at least one explicit source node; an empty static target list remains
+the disabled default. The plan is read again once immediately before the TLS
+phase, after generic matrix/DNS/DoH work, rather than using the matrix-start plan.
+
+Pre-rollout live measurements on 2026-11-22 22:13–22:14 UTC were 44.635–69.703
+seconds across host/pod collectors on domain-ex, suxunji and r640 (audit operation
+`op_0e664259e1d749d59200e875e9575cd9`). This is a measured baseline, not a maximum.
+For the reviewed canary, fix a 180-second deadline from source endpoint change to
+fresh new-endpoint NPA before starting. That budget includes the measured generic
+phase, the 30-second collection interval, controller cadence, plan GET and bounded
+TLS phase. Missing that deadline fails acceptance; do not widen it after observing
+results. Expiry/revocation must stop dynamic probing at plan validity and withdraw
+Ready evidence within the same deadline. A source change during an in-flight
+cycle is rechecked against discovery on the next cycle; this is bounded polling,
+not an instantaneous watch guarantee.
