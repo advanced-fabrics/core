@@ -181,7 +181,10 @@ def service_assessments():
     def load():
         response = kube_get("/apis/%s/v1alpha2/networkpathassessments?limit=200" % API_GROUP)
         return {"items": [item for item in response.get("items", [])
-                          if item.get("spec", {}).get("subjectRef", {}).get("kind") == "Service"],
+                          if item.get("spec", {}).get("subjectRef", {}).get("kind") == "Service"
+                          and item.get("spec", {}).get("subjectRef", {}).get("apiVersion") == "v1"
+                          and all(isinstance(item["spec"]["subjectRef"].get(key), str)
+                                  and item["spec"]["subjectRef"][key] for key in ("namespace", "name"))],
                 "truncated": bool(response.get("metadata", {}).get("continue"))}
     return cached("service-assessments", load)
 
