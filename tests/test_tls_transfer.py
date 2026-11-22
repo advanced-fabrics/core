@@ -255,3 +255,14 @@ class TLSTransferTest(unittest.TestCase):
         result = self.probe(LocalTLS(self.server_context), maximumTotalMs=0.0001)
         self.assertTrue(result['success'])
         self.assertGreater(result['totalMs'], 0.0001)
+
+    def test_tls_context_explicitly_requires_modern_tls_and_certificate_verification(self):
+        context = ssl.create_default_context(cafile=self.ca)
+        # Verify the collector sets the policy, rather than relying on defaults.
+        context.minimum_version = ssl.TLSVersion.TLSv1_3
+        with patch.object(ssl, 'create_default_context', return_value=context):
+            result = self.probe(LocalTLS(self.server_context))
+        self.assertTrue(result['success'])
+        self.assertEqual(context.minimum_version, ssl.TLSVersion.TLSv1_2)
+        self.assertEqual(context.verify_mode, ssl.CERT_REQUIRED)
+        self.assertTrue(context.check_hostname)

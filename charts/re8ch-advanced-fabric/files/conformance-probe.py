@@ -193,6 +193,7 @@ def tls_transfer(target, padding, phase_deadline):
             raise ValueError("configuration")
         remaining()
         context = ssl.create_default_context(cafile=target.get("caFile"))
+        context.minimum_version = ssl.TLSVersion.TLSv1_2
         context.check_hostname = True
         context.verify_mode = ssl.CERT_REQUIRED
         context.set_alpn_protocols(["http/1.1"])

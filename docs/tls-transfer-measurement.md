@@ -56,7 +56,7 @@ policy identity, or address pool on that node.
   Queued work that exhausts this budget fails without dialing.
 - Request at most 8192 bytes. Response at most 32768 bytes, headers at most 8192.
   The extra byte used to detect overflow is never retained as evidence.
-- Strict CA and hostname verification, HTTP/1.1 only, one GET, connection close.
+- Strict CA and hostname verification, TLS 1.2 minimum, HTTP/1.1 only, one GET, connection close.
   A successful status alone is insufficient: the bounded response must complete.
 - Content-Length and connection-close response framing are supported. Chunked,
   duplicate-length, truncated, malformed, and oversized responses fail closed.
