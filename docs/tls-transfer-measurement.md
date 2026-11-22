@@ -17,7 +17,7 @@ Example target (documentation addresses only):
 ```json
 [{
   "name": "api-version",
-  "targetService": "service://example/control-api",
+  "targetService": "example/control-api",
   "endpoint": "192.0.2.10",
   "port": 443,
   "serverName": "api.example.test",
@@ -105,3 +105,19 @@ service's measured path. It must not globally mark a node unreachable, withdraw
 routes, choose an unmeasured alternate, or enable guarded apply. Compare padding
 sizes on the same declared scope to investigate transfer degradation; size
 sensitivity alone does not prove an MTU cause or authorize an MSS/MTU change.
+
+### Declaration identity and changes
+
+Each row includes `targetConfigurationDigest`: SHA-256 hex (no prefix) of UTF-8
+`json.dumps(identity, sort_keys=True, separators=(',', ':'))`. `identity` contains
+`name`, `targetService`, normalized-IP `endpoint`, `port` (default 443),
+`serverName`, `path` (default `/version`), `pathId` (default name), `caFile`
+(default null), sorted `expectedStatuses` (default [200]), sorted `paddingBytes`
+(default [0,2048]), and sorted `sourceNodes` (default []). Consumers must match
+this digest against the current declaration before accepting any old row.
+
+`maximumTotalMs`, `timeoutSeconds`, and `required` are excluded: current quality
+policy can reject existing measured facts without changing their identity.
+Changing a CA file reference, expected statuses, path ID or endpoint invalidates
+old evidence. Rotation of CA contents at the same path is not content-pinned by
+this version; that requires a separately reviewed certificate-digest contract.

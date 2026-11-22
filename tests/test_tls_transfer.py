@@ -2,6 +2,7 @@
 import ast
 import concurrent.futures
 import ipaddress
+import hashlib
 import json
 import os
 import re
@@ -17,10 +18,10 @@ from pathlib import Path
 from unittest.mock import patch
 
 SOURCE = Path(__file__).resolve().parents[1] / 'charts/re8ch-advanced-fabric/files/conformance-probe.py'
-ns = dict(json=json, os=os, re=re, ipaddress=ipaddress, socket=socket, ssl=ssl, time=time,
+ns = dict(hashlib=hashlib, json=json, os=os, re=re, ipaddress=ipaddress, socket=socket, ssl=ssl, time=time,
           concurrent=__import__('concurrent'), NODE='node-a', PLANE='pod', TIMEOUT=2,
           TLS_MAX_REQUEST_BYTES=8192, TLS_MAX_RESPONSE_BYTES=32768, TLS_MAX_HEADER_BYTES=8192)
-names = {'tls_targets', 'tls_transfer', 'measure_tls_targets', 'prometheus_text',
+names = {'tls_target_configuration_digest', 'tls_targets', 'tls_transfer', 'measure_tls_targets', 'prometheus_text',
          'labels', 'prometheus_escape', 'parse_observed_time'}
 exec(compile(ast.Module(body=[n for n in ast.parse(SOURCE.read_text()).body
                               if isinstance(n, ast.FunctionDef) and n.name in names], type_ignores=[]),
@@ -266,3 +267,20 @@ class TLSTransferTest(unittest.TestCase):
         self.assertEqual(context.minimum_version, ssl.TLSVersion.TLSv1_2)
         self.assertEqual(context.verify_mode, ssl.CERT_REQUIRED)
         self.assertTrue(context.check_hostname)
+
+    def test_target_digest_binds_scope_and_trust_but_excludes_quality_policy(self):
+        digest = ns['tls_target_configuration_digest']
+        base = dict(name='api', targetService='default/kubernetes', endpoint='2001:0db8::1',
+                    serverName='probe.example')
+        # Fixed cross-consumer contract vector (normalized IPv6 and defaults).
+        self.assertEqual(digest(base), 'd9a92fdac0da3cc95f097adb2c9847be5d1a59dc4341243557509b2e486568a3')
+        explicit = {**base, 'endpoint': '2001:db8::1', 'port': 443, 'path': '/version', 'pathId': 'api',
+                    'caFile': None, 'expectedStatuses': [200], 'paddingBytes': [2048, 0], 'sourceNodes': []}
+        self.assertEqual(digest(base), digest(explicit))
+        for field, value in [('caFile', '/new-public-ca.crt'), ('pathId', 'new-path'),
+                             ('expectedStatuses', [401]), ('sourceNodes', ['node-a']),
+                             ('endpoint', '2001:db8::2')]:
+            with self.subTest(field=field):
+                self.assertNotEqual(digest(base), digest({**base, field: value}))
+        for field, value in [('maximumTotalMs', 20), ('timeoutSeconds', 1), ('required', True)]:
+            self.assertEqual(digest(base), digest({**base, field: value}))

@@ -15,6 +15,7 @@ import statistics
 import concurrent.futures
 import ipaddress
 import re
+import hashlib
 
 
 NODE = os.environ["NODE_NAME"]
@@ -157,6 +158,18 @@ def tls_targets(raw):
     return result
 
 
+def tls_target_configuration_digest(target):
+    """Bind evidence to the measured declaration, independently of quality policy."""
+    identity = {"name": target["name"], "targetService": target["targetService"],
+                "endpoint": str(ipaddress.ip_address(target["endpoint"])), "port": target.get("port", 443),
+                "serverName": target["serverName"], "path": target.get("path", "/version"),
+                "pathId": target.get("pathId", target["name"]), "caFile": target.get("caFile"),
+                "expectedStatuses": sorted(target.get("expectedStatuses", [200])),
+                "paddingBytes": sorted(target.get("paddingBytes", [0, 2048])),
+                "sourceNodes": sorted(target.get("sourceNodes", []))}
+    return hashlib.sha256(json.dumps(identity, sort_keys=True, separators=(",", ":")).encode("utf-8")).hexdigest()
+
+
 def tls_transfer(target, padding, phase_deadline):
     """One strict-TLS, bounded, anonymous GET; no response content is evidence."""
     started = time.monotonic()
@@ -166,6 +179,7 @@ def tls_transfer(target, padding, phase_deadline):
               "endpoint": target["endpoint"], "port": target["port"], "serverName": target["serverName"],
               "path": target["path"], "pathId": target["pathId"], "required": target["required"],
               "sourceNodes": target["sourceNodes"],
+              "targetConfigurationDigest": tls_target_configuration_digest(target),
               "paddingBytes": padding, "startedAt": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
               "success": False, "state": "Failed", "category": "transport", "error": "",
               "statusCode": None, "connectMs": None, "handshakeMs": None, "requestResponseMs": None,
