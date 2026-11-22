@@ -1,7 +1,7 @@
 # AFEP: scoped Service observation read interface
 
-Status: proposed; additive observation API extension, not a new registry or controller.
-Release: after 1.0.0-rc.15; do not rebuild or relabel the rc.15 artifact.
+Status: accepted source contract; additive observation API extension, not a new registry or controller.
+Release: 1.0.0-rc.16; do not rebuild or relabel the rc.15 artifact.
 
 The existing observation API only enumerated Node subjects. Applications and
 operator clients needing the same TLS Service evidence had to read the formal
