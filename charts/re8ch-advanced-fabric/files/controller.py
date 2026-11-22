@@ -32,6 +32,12 @@ OBSERVATION_API_SERVICE = os.environ.get("OBSERVATION_API_SERVICE", "advanced-fa
 OBSERVATION_API_PORT = int(os.environ.get("OBSERVATION_API_PORT", "8080"))
 LEADER = LeaderLease(BASE, TOKEN, CONTEXT, NAMESPACE, os.environ.get("POD_NAME", ""))
 MEASUREMENT_DEFINITIONS = {
+    "tls-transfer-v1": {"scope": "source node/plane to one explicitly configured service TLS endpoint",
+        "unit": "bytes, milliseconds and complete transfer outcome",
+        "samplingProcedure": "bounded strict TLS HTTP GET with fixed non-sensitive padding sizes",
+        "timeWindow": "one collector interval", "failureSemantics": "missing is unknown; partial TLS/HTTP transfer is failure",
+        "uncertainty": "finite samples; validates the configured endpoint and sizes only",
+        "measurementCost": "at most four reviewed targets, two sizes and three assigned source nodes"},
     "path-quality-v1": {"scope": "source node/plane to one selected path endpoint", "unit": "loss ratio and milliseconds",
         "samplingProcedure": "bounded TCP attempts at configured cadence", "timeWindow": "one collector interval",
         "failureSemantics": "timeout/refusal is loss; absent endpoint is missing", "uncertainty": "finite samples and TCP-only reachability",
@@ -623,6 +629,73 @@ def path_evidence_document(node, node_ready, status, measurements, validity_seco
     return document, result
 
 
+def tls_service_evidence_documents(targets, active_nodes, measurements, validity_seconds, now=None):
+    """Publish endpoint-scoped evidence; TCP reachability never substitutes for TLS."""
+    now = time.time() if now is None else now
+    for target in targets[:4]:
+        service = str(target.get("targetService", "")).split("/")
+        if len(service) != 2 or not all(service) or not target.get("name"):
+            continue
+        namespace, service_name = service
+        sizes = set(target.get("paddingBytes", [0, 2048]))
+        for node in sorted(set(target.get("sourceNodes", [])) & set(active_nodes)):
+            records = []
+            expected = {(plane, size) for plane in ("host", "pod") for size in sizes}
+            seen = set()
+            for plane in ("host", "pod"):
+                measurement = measurements.get((node, plane), {})
+                if not measurement.get("fresh"):
+                    continue
+                for row in measurement.get("tlsTransfers", []):
+                    if (row.get("measurementDefinitionId") != "tls-transfer-v1" or
+                        row.get("targetId") != target["name"] or row.get("sourceNode") != node or
+                        row.get("sourcePlane") != plane or row.get("targetService") != target["targetService"] or
+                        row.get("endpoint") != target.get("endpoint") or row.get("port") != target.get("port", 443) or
+                        row.get("serverName") != target.get("serverName") or row.get("path") != target.get("path", "/version") or
+                        row.get("paddingBytes") not in sizes):
+                        continue
+                    try:
+                        age = now - parse_time(row["observedAt"])
+                    except (KeyError, TypeError, ValueError):
+                        continue
+                    if age < 0 or age > validity_seconds:
+                        continue
+                    records.append(row)
+                    seen.add((plane, row["paddingBytes"]))
+            complete = bool(expected) and seen == expected
+            transferred = complete and all(row.get("success") is True for row in records)
+            within_budget = complete and all(isinstance(row.get("totalMs"), (int, float)) and
+                0 <= row["totalMs"] <= target.get("maximumTotalMs", 1000) for row in records)
+            succeeded = transferred and within_budget
+            observed = min((row["observedAt"] for row in records), default=None)
+            identity = node + "/" + target["name"]
+            name = "tls-" + hashlib.sha256(identity.encode()).hexdigest()[:24]
+            document = {"apiVersion": API_GROUP + "/v1alpha2", "kind": "NetworkPathAssessment",
+                "metadata": {"name": name, "labels": {"app.kubernetes.io/managed-by": MANAGED_BY,
+                    "networking.advfab.org/subject-kind": "Service"}},
+                "spec": {"subjectRef": {"apiVersion": "v1", "kind": "Service", "namespace": namespace, "name": service_name},
+                    "scope": {"plane": "host-and-pod", "direction": "bidirectional", "protocol": "tcp",
+                              "sourceNode": node, "targetId": target["name"], "endpoint": target.get("endpoint"),
+                              "port": target.get("port", 443), "serverName": target.get("serverName"),
+                              "path": target.get("path", "/version"), "paddingBytes": sorted(sizes)}}}
+            status = {"state": "Ready" if succeeded else "Partial" if records else "Unknown",
+                "pathEvidence": {"reachable": transferred if complete else None, "currentPathMeasured": complete,
+                                 "freshPlanes": sorted({plane for plane, _ in seen}),
+                                 "missingEvidence": [] if complete else ["complete-host-and-pod-tls-transfers"]},
+                "serviceEvidence": {"definition": "tls-transfer-v1", "required": bool(target.get("required", False)),
+                                    "complete": complete, "withinLatencyBudget": within_budget,
+                                    "maximumTotalMs": target.get("maximumTotalMs", 1000), "transfers": records},
+                "evidenceRefs": ["tls-transfer-v1"],
+                "conditions": [condition("EvidenceReady", succeeded,
+                    "TLSTransfersReady" if succeeded else "TLSFailedOrIncomplete",
+                    "only the configured service endpoint, source node, planes and sizes are covered")]}
+            if observed:
+                status["observedAt"] = observed
+                status["validUntil"] = datetime.datetime.fromtimestamp(
+                    parse_time(observed) + validity_seconds, datetime.timezone.utc).isoformat().replace("+00:00", "Z")
+            yield document, status
+
+
 def structural_observations(nodes, measurement_maps, previous=None, history_limit=96,
                             max_payload_bytes=800000):
     output = {}
@@ -1001,6 +1074,9 @@ def reconcile():
         for node in active_nodes:
             document, assessment_status = path_evidence_document(
                 node, ready.get(node["name"], False), statuses.get(node["name"], {}), measurement_state, validity)
+            custom_upsert("networkpathassessments", document, assessment_status, "v1alpha2")
+        for document, assessment_status in tls_service_evidence_documents(
+                quality_standard.get("tlsTargets", []), node_index, measurement_state, validity):
             custom_upsert("networkpathassessments", document, assessment_status, "v1alpha2")
     for document, triangle_status in triangle_documents():
         custom_upsert("tradeofftriangles", document, triangle_status)
