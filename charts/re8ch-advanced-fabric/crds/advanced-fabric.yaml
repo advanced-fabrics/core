@@ -46,7 +46,11 @@ spec:
                   required: [publishAssessments, validitySeconds]
                   properties:
                     publishAssessments: {type: boolean}
+                    serviceName: {type: string}
+                    port: {type: integer, minimum: 1, maximum: 65535}
                     validitySeconds: {type: integer, minimum: 30, maximum: 3600}
+                dns: {type: object, x-kubernetes-preserve-unknown-fields: true}
+                virtualIngress: {type: object, x-kubernetes-preserve-unknown-fields: true}
                 networkQuality: {type: object, x-kubernetes-preserve-unknown-fields: true}
                 weightedEcmp: {type: object, x-kubernetes-preserve-unknown-fields: true}
                 policyRouting: {type: object, x-kubernetes-preserve-unknown-fields: true}
