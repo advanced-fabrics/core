@@ -105,13 +105,14 @@ def tls_targets(raw):
     if not isinstance(targets, list) or len(targets) > 4:
         raise ValueError("configuration")
     allowed = {"name", "targetService", "endpoint", "port", "serverName", "path", "pathId",
-               "required", "caFile", "expectedStatuses", "paddingBytes", "timeoutSeconds", "sourceNodes"}
+               "required", "caFile", "expectedStatuses", "paddingBytes", "timeoutSeconds", "sourceNodes", "maximumTotalMs"}
     result, names = [], set()
     for item in targets:
         if not isinstance(item, dict) or set(item) - allowed:
             raise ValueError("configuration")
         target = {"port": 443, "path": "/version", "required": False, "expectedStatuses": [200],
-                  "paddingBytes": [0, 2048], "timeoutSeconds": min(TIMEOUT, 5), "sourceNodes": [], **item}
+                  "paddingBytes": [0, 2048], "timeoutSeconds": min(TIMEOUT, 5), "sourceNodes": [],
+                  "maximumTotalMs": 1000, **item}
         for key in ("name", "targetService", "serverName"):
             if not isinstance(target.get(key), str) or not target[key] or len(target[key]) > 253:
                 raise ValueError("configuration")
@@ -138,6 +139,8 @@ def tls_targets(raw):
                 for node in sources) or len(set(sources)) != len(sources):
             raise ValueError("configuration")
         if type(target["timeoutSeconds"]) not in (int, float) or not 0 < target["timeoutSeconds"] <= 5:
+            raise ValueError("configuration")
+        if type(target["maximumTotalMs"]) not in (int, float) or not 0 < target["maximumTotalMs"] <= 5000:
             raise ValueError("configuration")
         if not isinstance(target["expectedStatuses"], list) or not 1 <= len(target["expectedStatuses"]) <= 4 or any(
                 type(code) is not int or not 100 <= code <= 599 for code in target["expectedStatuses"]):

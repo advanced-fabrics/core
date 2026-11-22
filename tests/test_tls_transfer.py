@@ -242,3 +242,16 @@ class TLSTransferTest(unittest.TestCase):
         self.assertFalse(result['success'])
         self.assertEqual(result['category'], 'response-limit')
         self.assertEqual(result['responseBytes'], 32769)
+
+    def test_quality_latency_budget_is_positive_bounded_and_not_a_socket_timeout(self):
+        self.assertEqual(self.target(443)['maximumTotalMs'], 1000)
+        for value in (0.5, 1000, 5000):
+            self.assertEqual(self.target(443, maximumTotalMs=value)['maximumTotalMs'], value)
+        for value in (0, -1, 5001, True, '1000', float('nan'), float('inf')):
+            with self.subTest(value=value), self.assertRaises(ValueError):
+                self.target(443, maximumTotalMs=value)
+        # Keep successful transfer timing observable even if a consumer's quality
+        # budget is tighter; service inference must reject success AND over-budget.
+        result = self.probe(LocalTLS(self.server_context), maximumTotalMs=0.0001)
+        self.assertTrue(result['success'])
+        self.assertGreater(result['totalMs'], 0.0001)

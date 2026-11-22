@@ -28,7 +28,8 @@ Example target (documentation addresses only):
   "required": true,
   "expectedStatuses": [200],
   "paddingBytes": [0, 2048],
-  "timeoutSeconds": 2
+  "timeoutSeconds": 2,
+  "maximumTotalMs": 1000
 }]
 ```
 
@@ -61,7 +62,13 @@ policy identity, or address pool on that node.
   duplicate-length, truncated, malformed, and oversized responses fail closed.
   There is no retry or fallback to a different path, address, protocol or CA.
 
-The budget spans connect, TLS handshake, request and response. Each blocking
+`maximumTotalMs` is the separate service quality budget: a positive number at
+most 5000, default 1000 milliseconds. It does not extend the socket deadline.
+Consumers must require both `success` and `totalMs <= maximumTotalMs`; a transfer
+that eventually completes after 3.3 seconds is not healthy under the default
+service budget. Transfer success alone describes completion, not service quality.
+
+The socket budget spans connect, TLS handshake, request and response. Each blocking
 socket operation receives only the remaining deadline, including trickled reads.
 The configured CA must be a local public-certificate mount; remote filesystems or
 unbounded name resolution are not part of the procedure. Expected HTTP statuses
