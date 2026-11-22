@@ -10,6 +10,13 @@ The controller publishes v1alpha2 Service NetworkPathAssessments for each
 configured target and assigned active source node. Scope includes endpoint,
 port, SNI, request path and sizes. Ready requires every configured size from
 both host and pod planes, fresh matching transfer records, and complete success.
+The current per-transfer latency budget also has to pass. Each row and assessment
+bind a canonical targetConfigurationDigest to the service, endpoint, SNI, path,
+path ID, CA file reference, expected statuses, sizes and assigned source nodes.
+Changing that measurement identity invalidates earlier rows. Quality budgets
+are evaluated against current policy instead of changing measured facts. A CA
+file reference is bound; file contents are verified by the collector's TLS trust
+context, not published as evidence or treated as a credential.
 TCP success, a different endpoint, a different source, stale records, or an
 incomplete large transfer cannot satisfy this scope. Validity uses the oldest
 accepted record. Changing an endpoint immediately makes its old observations

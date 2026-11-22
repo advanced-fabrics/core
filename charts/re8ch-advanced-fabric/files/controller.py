@@ -682,12 +682,27 @@ def path_evidence_document(node, node_ready, status, measurements, validity_seco
     return document, result
 
 
+def tls_target_configuration_digest(target):
+    identity = {"name": target["name"], "targetService": target["targetService"],
+        "endpoint": str(ipaddress.ip_address(target["endpoint"])), "port": target.get("port", 443),
+        "serverName": target["serverName"], "path": target.get("path", "/version"),
+        "pathId": target.get("pathId", target["name"]), "caFile": target.get("caFile"),
+        "expectedStatuses": sorted(target.get("expectedStatuses", [200])),
+        "paddingBytes": sorted(target.get("paddingBytes", [0, 2048])),
+        "sourceNodes": sorted(target.get("sourceNodes", []))}
+    return hashlib.sha256(json.dumps(identity, sort_keys=True, separators=(",", ":")).encode()).hexdigest()
+
+
 def tls_service_evidence_documents(targets, active_nodes, measurements, validity_seconds, now=None):
     """Publish endpoint-scoped evidence; TCP reachability never substitutes for TLS."""
     now = time.time() if now is None else now
     for target in targets[:4]:
         service = str(target.get("targetService", "")).split("/")
         if len(service) != 2 or not all(service) or not target.get("name"):
+            continue
+        try:
+            configuration_digest = tls_target_configuration_digest(target)
+        except (KeyError, TypeError, ValueError):
             continue
         namespace, service_name = service
         sizes = set(target.get("paddingBytes", [0, 2048]))
@@ -705,6 +720,8 @@ def tls_service_evidence_documents(targets, active_nodes, measurements, validity
                         row.get("sourcePlane") != plane or row.get("targetService") != target["targetService"] or
                         row.get("endpoint") != target.get("endpoint") or row.get("port") != target.get("port", 443) or
                         row.get("serverName") != target.get("serverName") or row.get("path") != target.get("path", "/version") or
+                        row.get("targetConfigurationDigest") != configuration_digest or
+                        row.get("statusCode") not in target.get("expectedStatuses", [200]) or
                         row.get("paddingBytes") not in sizes):
                         continue
                     try:
@@ -731,6 +748,7 @@ def tls_service_evidence_documents(targets, active_nodes, measurements, validity
                               "sourceNode": node, "targetId": target["name"], "endpoint": target.get("endpoint"),
                               "port": target.get("port", 443), "serverName": target.get("serverName"),
                               "path": target.get("path", "/version"), "paddingBytes": sorted(sizes)}}}
+            document["spec"]["scope"]["targetConfigurationDigest"] = configuration_digest
             status = {"state": "Ready" if succeeded else "Partial" if records else "Unknown",
                 "pathEvidence": {"reachable": transferred if complete else None, "currentPathMeasured": complete,
                                  "freshPlanes": sorted({plane for plane, _ in seen}),
