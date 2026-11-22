@@ -13,6 +13,8 @@ import urllib.error
 import urllib.request
 import statistics
 import concurrent.futures
+import ipaddress
+import re
 
 
 NODE = os.environ["NODE_NAME"]
@@ -35,6 +37,9 @@ MAX_CONCURRENCY = int(os.environ.get("PROBE_MAX_CONCURRENCY", "24"))
 BASE = "https://%s:%s" % (os.environ["KUBERNETES_SERVICE_HOST"], os.environ["KUBERNETES_SERVICE_PORT_HTTPS"])
 TOKEN = open("/var/run/secrets/kubernetes.io/serviceaccount/token", encoding="utf-8").read().strip()
 CONTEXT = ssl.create_default_context(cafile="/var/run/secrets/kubernetes.io/serviceaccount/ca.crt")
+TLS_MAX_REQUEST_BYTES = 8192
+TLS_MAX_RESPONSE_BYTES = 32768
+TLS_MAX_HEADER_BYTES = 8192
 
 
 def api(method, path, body=None):
@@ -90,6 +95,196 @@ def measure(address):
             "lossRatio": round(1 - successes / len(attempts), 4), "p50Ms": percentile(latencies, .5),
             "p95Ms": percentile(latencies, .95), "selectedSourceAddresses": sorted({source for ok, _, _, source
             in attempts if ok and source}), "errors": sorted({error for ok, _, error, _ in attempts if not ok})}
+
+
+def tls_targets(raw):
+    """Validate explicit anonymous targets; never discover paths or credentials."""
+    if len(raw) > 16384:
+        raise ValueError("configuration")
+    targets = json.loads(raw)
+    if not isinstance(targets, list) or len(targets) > 4:
+        raise ValueError("configuration")
+    allowed = {"name", "targetService", "endpoint", "port", "serverName", "path", "pathId",
+               "required", "caFile", "expectedStatuses", "paddingBytes", "timeoutSeconds", "sourceNodes"}
+    result, names = [], set()
+    for item in targets:
+        if not isinstance(item, dict) or set(item) - allowed:
+            raise ValueError("configuration")
+        target = {"port": 443, "path": "/version", "required": False, "expectedStatuses": [200],
+                  "paddingBytes": [0, 2048], "timeoutSeconds": min(TIMEOUT, 5), "sourceNodes": [], **item}
+        for key in ("name", "targetService", "serverName"):
+            if not isinstance(target.get(key), str) or not target[key] or len(target[key]) > 253:
+                raise ValueError("configuration")
+        if not re.fullmatch(r"[a-zA-Z0-9][a-zA-Z0-9_.-]{0,62}", target["name"]) or target["name"] in names:
+            raise ValueError("configuration")
+        names.add(target["name"])
+        if any(char.isspace() for char in target["targetService"]):
+            raise ValueError("configuration")
+        if not re.fullmatch(r"[a-zA-Z0-9][a-zA-Z0-9.-]{0,251}[a-zA-Z0-9]", target["serverName"]):
+            raise ValueError("configuration")
+        target["endpoint"] = str(ipaddress.ip_address(target["endpoint"]))
+        if type(target["port"]) is not int or not 1 <= target["port"] <= 65535:
+            raise ValueError("configuration")
+        if not isinstance(target["path"], str) or len(target["path"]) > 512 or not re.fullmatch(r"/[a-zA-Z0-9/._~-]*", target["path"]):
+            raise ValueError("configuration")
+        target.setdefault("pathId", target["name"])
+        if not isinstance(target["pathId"], str) or not re.fullmatch(r"[a-zA-Z0-9_.-]{1,128}", target["pathId"]):
+            raise ValueError("configuration")
+        if type(target["required"]) is not bool:
+            raise ValueError("configuration")
+        sources = target["sourceNodes"]
+        if not isinstance(sources, list) or len(sources) > 3 or any(
+                not isinstance(node, str) or not re.fullmatch(r"[a-zA-Z0-9][a-zA-Z0-9_.-]{0,252}", node)
+                for node in sources) or len(set(sources)) != len(sources):
+            raise ValueError("configuration")
+        if type(target["timeoutSeconds"]) not in (int, float) or not 0 < target["timeoutSeconds"] <= 5:
+            raise ValueError("configuration")
+        if not isinstance(target["expectedStatuses"], list) or not 1 <= len(target["expectedStatuses"]) <= 4 or any(
+                type(code) is not int or not 100 <= code <= 599 for code in target["expectedStatuses"]):
+            raise ValueError("configuration")
+        sizes = target["paddingBytes"]
+        if not isinstance(sizes, list) or not 1 <= len(sizes) <= 2 or len(set(sizes)) != len(sizes) or any(
+                type(size) is not int or not 0 <= size <= 4096 for size in sizes):
+            raise ValueError("configuration")
+        ca = target.get("caFile")
+        if ca is not None and (not isinstance(ca, str) or not ca.startswith("/") or
+                               not ca.endswith((".crt", ".pem")) or any(char.isspace() for char in ca)):
+            raise ValueError("configuration")
+        result.append(target)
+    return result
+
+
+def tls_transfer(target, padding, phase_deadline):
+    """One strict-TLS, bounded, anonymous GET; no response content is evidence."""
+    started = time.monotonic()
+    deadline = min(phase_deadline, started + target["timeoutSeconds"])
+    result = {"measurementDefinitionId": "tls-transfer-v1", "sourceNode": NODE, "sourcePlane": PLANE,
+              "targetId": target["name"], "targetService": target["targetService"],
+              "endpoint": target["endpoint"], "port": target["port"], "serverName": target["serverName"],
+              "path": target["path"], "pathId": target["pathId"], "required": target["required"],
+              "sourceNodes": target["sourceNodes"],
+              "paddingBytes": padding, "startedAt": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+              "success": False, "state": "Failed", "category": "transport", "error": "",
+              "statusCode": None, "connectMs": None, "handshakeMs": None, "requestResponseMs": None,
+              "requestBytes": 0, "responseBytes": 0, "bodyBytes": 0}
+    client = None
+
+    def remaining():
+        duration = deadline - time.monotonic()
+        if duration <= 0:
+            raise TimeoutError()
+        if client is not None:
+            client.settimeout(duration)
+        return duration
+
+    def receive():
+        remaining()
+        chunk = client.recv(min(4096, TLS_MAX_RESPONSE_BYTES + 1 - result["responseBytes"]))
+        result["responseBytes"] += len(chunk)
+        if result["responseBytes"] > TLS_MAX_RESPONSE_BYTES:
+            raise ValueError("response-limit")
+        return chunk
+
+    try:
+        if NODE not in target["sourceNodes"]:
+            raise ValueError("configuration")
+        remaining()
+        context = ssl.create_default_context(cafile=target.get("caFile"))
+        context.check_hostname = True
+        context.verify_mode = ssl.CERT_REQUIRED
+        context.set_alpn_protocols(["http/1.1"])
+        request = ("GET %s HTTP/1.1\r\nHost: %s\r\nConnection: close\r\nX-Diagnostic-Padding: %s\r\n\r\n" %
+                   (target["path"], target["serverName"], "x" * padding)).encode("ascii")
+        if len(request) > TLS_MAX_REQUEST_BYTES:
+            raise ValueError("configuration")
+        result["requestBytes"] = len(request)
+        family = socket.AF_INET6 if ipaddress.ip_address(target["endpoint"]).version == 6 else socket.AF_INET
+        client = socket.socket(family, socket.SOCK_STREAM)
+        remaining()
+        client.connect((target["endpoint"], target["port"]))
+        result["sourceAddress"], result["sourcePort"] = client.getsockname()[:2]
+        connected = time.monotonic()
+        result["connectMs"] = round((connected - started) * 1000, 3)
+        client = context.wrap_socket(client, server_hostname=target["serverName"], do_handshake_on_connect=False)
+        remaining()
+        client.do_handshake()
+        handshaken = time.monotonic()
+        result["handshakeMs"] = round((handshaken - connected) * 1000, 3)
+        remaining()
+        client.sendall(request)
+        payload = b""
+        while b"\r\n\r\n" not in payload:
+            chunk = receive()
+            if not chunk:
+                raise ValueError("http-framing")
+            payload += chunk
+            if len(payload.split(b"\r\n\r\n", 1)[0]) > TLS_MAX_HEADER_BYTES:
+                raise ValueError("response-limit")
+        head, body = payload.split(b"\r\n\r\n", 1)
+        lines = head.split(b"\r\n")
+        status = re.fullmatch(rb"HTTP/1\.[01] ([0-9]{3})(?: .*)?", lines[0])
+        if not status:
+            raise ValueError("http-framing")
+        result["statusCode"] = int(status[1])
+        headers = {}
+        for line in lines[1:]:
+            if b":" not in line:
+                raise ValueError("http-framing")
+            key, value = line.split(b":", 1)
+            key, value = key.strip().lower(), value.strip()
+            if key in (b"content-length", b"transfer-encoding") and key in headers:
+                raise ValueError("http-framing")
+            headers[key] = value
+        # Only an explicit length or connection-close frame can prove completion.
+        if headers.get(b"transfer-encoding", b"identity").lower() != b"identity":
+            raise ValueError("http-framing")
+        length = headers.get(b"content-length")
+        if length is not None:
+            if not re.fullmatch(rb"[0-9]+", length):
+                raise ValueError("http-framing")
+            length = int(length)
+            if length + len(head) + 4 > TLS_MAX_RESPONSE_BYTES:
+                raise ValueError("response-limit")
+        result["bodyBytes"] = len(body)
+        while length is None or result["bodyBytes"] < length:
+            chunk = receive()
+            if not chunk:
+                if length is not None:
+                    raise ValueError("http-framing")
+                break
+            result["bodyBytes"] += len(chunk)
+        if length is not None and result["bodyBytes"] != length:
+            raise ValueError("http-framing")
+        remaining()
+        result["requestResponseMs"] = round((time.monotonic() - handshaken) * 1000, 3)
+        if result["statusCode"] not in target["expectedStatuses"]:
+            raise ValueError("http-status")
+        result.update(success=True, state="Succeeded", category="ok")
+    except (OSError, ValueError) as error:
+        category = str(error) if isinstance(error, ValueError) and str(error) in (
+            "configuration", "response-limit", "http-framing", "http-status") else (
+            "deadline" if isinstance(error, TimeoutError) else "tls" if isinstance(error, ssl.SSLError) else "transport")
+        result.update(category=category, error=error.__class__.__name__)
+    finally:
+        if client is not None:
+            client.close()
+    result["totalMs"] = round((time.monotonic() - started) * 1000, 3)
+    result["observedAt"] = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+    return result
+
+
+def measure_tls_targets():
+    try:
+        targets = tls_targets(os.environ.get("TLS_PROBE_TARGETS", "[]"))
+    except (ValueError, TypeError, KeyError, OverflowError):
+        return [{"measurementDefinitionId": "tls-transfer-v1", "sourceNode": NODE, "sourcePlane": PLANE,
+                 "success": False, "state": "Failed", "category": "configuration", "error": "InvalidTargetConfiguration",
+                 "observedAt": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())}]
+    jobs = [(target, padding) for target in targets if NODE in target["sourceNodes"]
+            for padding in target["paddingBytes"]]
+    deadline = time.monotonic() + 20
+    with concurrent.futures.ThreadPoolExecutor(max_workers=2) as pool:
+        return list(pool.map(lambda job: tls_transfer(*job, deadline), jobs))
 
 
 def encode_name(name):
@@ -288,6 +483,7 @@ def snapshot():
     with concurrent.futures.ThreadPoolExecutor(max_workers=max(1, min(MAX_CONCURRENCY, len(dns_jobs)))) as pool:
         dns = list(pool.map(measure_dns, dns_jobs))
     doh = [doh_measure(DOH_URL)] if DOH_URL else []
+    tls_transfers = measure_tls_targets()
     path_attempts = sum(item.get("attempts", 0) for item in paths)
     path_successes = sum(item.get("successes", 0) for item in paths)
     successful_p95 = [item["p95Ms"] for item in paths if item.get("p95Ms") is not None]
@@ -302,8 +498,10 @@ def snapshot():
             "measurementDurationSeconds": round(duration, 3), "validitySeconds": validity,
             "sourceNode": NODE, "sourcePlane": PLANE,
             "targetsDiscovered": len(targets), "paths": paths, "dns": dns, "doh": doh,
+            "tlsTransfers": tls_transfers,
             "history": history_summary(HISTORY),
-            "measurementDefinitionIds": ["path-quality-v1", "dns-quality-v1"], "planGeneration": plan_generation,
+            "measurementDefinitionIds": ["path-quality-v1", "dns-quality-v1"] +
+                (["tls-transfer-v1"] if tls_transfers else []), "planGeneration": plan_generation,
             "completedTaskIds": sorted(task["id"] for task in tasks)}
 
 
@@ -367,6 +565,16 @@ def prometheus_text(result):
                 lines.append("%s%s %s" % (metric, labels(common), entry[field]))
         for rcode, count in entry.get("rcodes", {}).items():
             lines.append("advanced_fabric_doh_probe_responses%s %s" % (labels(dict(common, rcode=rcode)), count))
+    for entry in result.get("tlsTransfers", []):
+        common = {"source_node": NODE, "source_plane": PLANE, "target_id": entry.get("targetId", "configuration"),
+                  "target_service": entry.get("targetService", ""), "endpoint": entry.get("endpoint", ""),
+                  "port": entry.get("port", ""), "path_id": entry.get("pathId", ""),
+                  "padding_bytes": entry.get("paddingBytes", ""), "category": entry["category"]}
+        lines.append("advanced_fabric_tls_transfer_success%s %d" % (labels(common), int(entry["success"])))
+        for field, metric in (("totalMs", "duration_milliseconds"), ("requestBytes", "request_bytes"),
+                              ("responseBytes", "response_bytes"), ("bodyBytes", "body_bytes")):
+            if entry.get(field) is not None:
+                lines.append("advanced_fabric_tls_transfer_%s%s %s" % (metric, labels(common), entry[field]))
     return "\n".join(lines) + "\n"
 
 
