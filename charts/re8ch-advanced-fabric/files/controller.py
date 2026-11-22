@@ -12,6 +12,7 @@ import urllib.request
 import math
 import datetime
 import threading
+import ipaddress
 from leader_lease import LeaderLease
 
 
@@ -121,6 +122,56 @@ def cluster_inventory(spec_nodes, node_objects):
                if not item.get("metadata", {}).get("deletionTimestamp")}
     active = [node for node in spec_nodes if node.get("name") in present]
     return active, sorted(node.get("name") for node in spec_nodes if node.get("name") not in present)
+
+
+def allocation_inventory(nodes, cilium_nodes, observed_at, read_error=None):
+    """Observe current allocations; never turn a topology declaration into IPAM authority."""
+    indexed = {item.get("metadata", {}).get("name"): item for item in cilium_nodes
+               if not item.get("metadata", {}).get("deletionTimestamp")}
+    result = []
+    for node in nodes:
+        item = indexed.get(node["name"])
+        meta = (item or {}).get("metadata", {})
+        ipam = (item or {}).get("spec", {}).get("ipam", {})
+        evidence = {"state": "Unknown", "observedAt": observed_at,
+                    "declaredPodCIDR": node.get("podCIDR"), "allocations": [],
+                    "sourceRef": {"apiVersion": "cilium.io/v2", "kind": "CiliumNode",
+                                  "name": node["name"], "uid": meta.get("uid"),
+                                  "resourceVersion": meta.get("resourceVersion")}}
+        cidrs = []
+        if read_error:
+            evidence["reason"] = read_error
+        elif item is None:
+            evidence["reason"] = "CiliumNodeMissing"
+        else:
+            try:
+                # An explicit multi-pool allocation list, including [], is authoritative.
+                # Requested pools, legacy podCIDRs and declared topology are not substitutes.
+                pools = ipam.get("pools", {})
+                if "allocated" in pools:
+                    evidence["sourceField"] = "spec.ipam.pools.allocated"
+                    for allocation in pools["allocated"]:
+                        pool = allocation["pool"]
+                        if not isinstance(pool, str) or not pool:
+                            raise ValueError("invalid pool")
+                        networks = sorted({str(ipaddress.ip_network(cidr, strict=True))
+                                           for cidr in allocation["cidrs"]})
+                        evidence["allocations"].append({"pool": pool, "cidrs": networks})
+                        cidrs.extend(networks)
+                    evidence["allocations"].sort(key=lambda entry: entry["pool"])
+                else:
+                    evidence["sourceField"] = "spec.ipam.podCIDRs"
+                    cidrs = [str(ipaddress.ip_network(cidr, strict=True))
+                             for cidr in ipam.get("podCIDRs", [])]
+                evidence["state"] = "Observed"
+            except (KeyError, TypeError, ValueError):
+                evidence.update(state="Unknown", reason="InvalidAllocation", allocations=[])
+                cidrs = []
+        evidence["podCIDRs"] = sorted(set(cidrs))
+        # Keep the legacy field as declared history; current consumers use the plural
+        # observation with source revision and cannot mistake missing reads for health.
+        result.append(dict(node, podCIDRs=evidence["podCIDRs"], allocationEvidence=evidence))
+    return result
 
 
 def stale_desired_nodes(data, active_names):
@@ -618,6 +669,8 @@ def path_evidence_document(node, node_ready, status, measurements, validity_seco
         "conditions": [condition("EvidenceReady", eligible, reason,
                                   "fresh, executed and reachable path evidence" if eligible else ", ".join(missing) or reason)]}
     if observed: result["observedAt"] = observed
+    if "allocationEvidence" in node:
+        result["allocationEvidence"] = node["allocationEvidence"]
     if valid_until_epoch is not None:
         result["validUntil"] = datetime.datetime.fromtimestamp(valid_until_epoch, datetime.timezone.utc).isoformat().replace("+00:00", "Z")
     return document, result
@@ -872,6 +925,14 @@ def reconcile():
     traffic_configmaps = request("GET", "/api/v1/configmaps?labelSelector="
                                  "app.kubernetes.io%2Fcomponent%3Dservice-traffic").get("items", [])
     active_nodes, retired_nodes = cluster_inventory(spec["nodes"], node_objects)
+    if spec.get("controller", {}).get("observeCiliumAllocations", False):
+        allocation_error = None
+        try:
+            cilium_nodes = request("GET", "/apis/cilium.io/v2/ciliumnodes").get("items", [])
+        except Exception:
+            cilium_nodes, allocation_error = [], "AllocationReadUnavailable"
+        active_nodes = allocation_inventory(active_nodes, cilium_nodes,
+            time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()), allocation_error)
     node_index = {node["name"]: node for node in active_nodes}
     declared_index = {node["name"]: node for node in spec["nodes"]}
     control_plane_api = spec.get("controlPlaneApi", {"enabled": False})
@@ -939,7 +1000,7 @@ def reconcile():
                   "transaction": make_api_transaction(name, control_plane_api, api_operations.get(name, {}),
                                                        name in guarded_api_nodes),
                   "podProfiles": profiles, "pathRankings": rankings.get(name, {}),
-                  "peers": [{key: peer.get(key) for key in ("name", "internalIP", "acceleratedIP", "podCIDR", "role", "class",
+                  "peers": [{key: peer.get(key) for key in ("name", "internalIP", "acceleratedIP", "podCIDR", "podCIDRs", "allocationEvidence", "role", "class",
                                                                   "provider", "isp", "region", "failureDomain", "gateway", "tunnel",
                                                                   "physicalPath", "asn")}
                             for peer in active_nodes if peer.get("name") != name],
@@ -1025,6 +1086,8 @@ def reconcile():
               "mode": spec["mode"], "applyEnabled": effective_apply,
               "networkQualityEnforced": quality_enforced,
               "activeNodes": sorted(node_index), "retiredInventoryNodes": retired_nodes,
+              "allocationInventory": {node["name"]: node["allocationEvidence"] for node in active_nodes
+                                      if "allocationEvidence" in node},
               "evidencePlanner": {"generation": plan["generation"], "tasks": len(plan["tasks"]),
                                   "pendingTasks": len(plan["pendingTaskIds"])},
               "serviceTraffic": {"observedServices": len(traffic_state),

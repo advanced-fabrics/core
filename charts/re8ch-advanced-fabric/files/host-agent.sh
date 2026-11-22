@@ -45,7 +45,7 @@ publish_status() {
   links=$(host ip -j -s link show 2>/dev/null || printf '[]')
   ecmp=$(printf '%s' "$routes" | jq -c '[.[] | select(((.nexthops // []) | length) > 1) | {dst: (.dst // "default"), protocol, metric, nexthops: [.nexthops[] | {gateway, dev, weight}]}]' 2>/dev/null || printf '[]')
   peers=$(jq -c '.peers // []' "${NODE_FILE}")
-  peer_routes=$(printf '%s' "$peers" | jq -c '[.[] | {name, internalIP, acceleratedIP, podCIDR,
+  peer_routes=$(printf '%s' "$peers" | jq -c '[.[] | {name, internalIP, acceleratedIP, podCIDR, podCIDRs, allocationEvidence,
     provider, region, failureDomain, gateway, tunnel, asn}]')
   rankings=$(jq -c '.pathRankings // {}' "${NODE_FILE}")
   api_config=$(jq -c '.controlPlaneApi // {enabled:false,eligible:false}' "${NODE_FILE}")
