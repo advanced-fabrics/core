@@ -113,6 +113,7 @@ advancedFabric:
     doh: {serviceName: advanced-fabric-doh, caSecretName: advanced-fabric-doh-tls}
     migration: {phase: shadow}
   networkQuality:
+    tlsTargets: []
     enabled: false
     # Observe and retain a baseline before turning measurements into gates.
     enforcementEnabled: false

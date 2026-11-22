@@ -273,6 +273,7 @@ spec:
             - {name: PROBE_TIMEOUT_SECONDS, value: {{ .Values.advancedFabric.networkQuality.timeoutSeconds | quote }}}
             - {name: PROBE_SAMPLES, value: {{ .Values.advancedFabric.networkQuality.samples | quote }}}
             - {name: PROBE_MAX_CONCURRENCY, value: {{ .Values.advancedFabric.networkQuality.maximumConcurrency | quote }}}
+            - {name: TLS_PROBE_TARGETS, value: {{ .Values.advancedFabric.networkQuality.tlsTargets | toJson | quote }}}
 {{- if .Values.advancedFabric.networkQuality.dns.shadowEnabled }}
             - {name: SHADOW_DNS_SERVICE, value: {{ .Values.advancedFabric.networkQuality.dns.shadowServiceName | quote }}}
 {{- end }}
@@ -371,6 +372,7 @@ spec:
             - {name: PROBE_TIMEOUT_SECONDS, value: {{ .Values.advancedFabric.networkQuality.timeoutSeconds | quote }}}
             - {name: PROBE_SAMPLES, value: {{ .Values.advancedFabric.networkQuality.samples | quote }}}
             - {name: PROBE_MAX_CONCURRENCY, value: {{ .Values.advancedFabric.networkQuality.maximumConcurrency | quote }}}
+            - {name: TLS_PROBE_TARGETS, value: {{ .Values.advancedFabric.networkQuality.tlsTargets | toJson | quote }}}
 {{- if .Values.advancedFabric.networkQuality.dns.shadowEnabled }}
             - {name: SHADOW_DNS_SERVICE, value: {{ .Values.advancedFabric.networkQuality.dns.shadowServiceName | quote }}}
 {{- end }}
