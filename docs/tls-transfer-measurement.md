@@ -82,12 +82,18 @@ Every normal `tlsTransfers[]` record contains:
 - Identity: `measurementDefinitionId: tls-transfer-v1`, `sourceNode`, `sourcePlane`,
   `targetId`, `targetService`, `endpoint`, `port`, `serverName`, `path`, `pathId`,
   `sourceNodes`, `required`, `paddingBytes`.
-- Timing: `startedAt`, `observedAt` (UTC), `connectMs`, `handshakeMs`,
+- Timing: `startedAt`, `observedAt` (UTC), `preparationMs`, `connectMs`, `handshakeMs`,
   `requestResponseMs`, `totalMs`. Unreached stages remain null.
 - Outcome: `success`, `state` (`Succeeded` or `Failed`), `category`, `error`
   (exception class only), and `statusCode` when received.
 - Size and source: `requestBytes`, `responseBytes`, `bodyBytes`, and the selected
   `sourceAddress`/`sourcePort` once connected.
+
+From rc.17, `preparationMs` reports local TLS-context/request preparation;
+`connectMs` covers only the TCP connect call. Earlier collectors included
+preparation in `connectMs`, so that historical field is not proof of TCP delay.
+`totalMs` still includes all local preparation and transfer work: the latency
+budget and overall deadline have not been relaxed.
 
 Categories are `ok`, `configuration`, `deadline`, `tls`, `transport`, `http-status`,
 `response-limit`, and `http-framing`. Invalid target configuration produces a

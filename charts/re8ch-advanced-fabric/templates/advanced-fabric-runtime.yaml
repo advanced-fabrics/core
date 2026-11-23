@@ -320,7 +320,8 @@ spec:
             - {name: DOH_CA_FILE, value: /doh-ca/tls.crt}
 {{- end }}
           securityContext: {allowPrivilegeEscalation: false, capabilities: {drop: [ALL]}, readOnlyRootFilesystem: true}
-          resources: {requests: {cpu: 10m, memory: 24Mi}, limits: {cpu: 100m, memory: 64Mi}}
+          resources:
+{{ toYaml .Values.advancedFabric.networkQuality.resources | indent 12 }}
           volumeMounts:
             - {name: runtime, mountPath: /runtime, readOnly: true}
             - {name: network-quality-metrics, mountPath: /metrics}
@@ -419,7 +420,8 @@ spec:
             - {name: DOH_CA_FILE, value: /doh-ca/tls.crt}
 {{- end }}
           securityContext: {allowPrivilegeEscalation: false, capabilities: {drop: [ALL]}, readOnlyRootFilesystem: true}
-          resources: {requests: {cpu: 10m, memory: 24Mi}, limits: {cpu: 100m, memory: 64Mi}}
+          resources:
+{{ toYaml .Values.advancedFabric.networkQuality.resources | indent 12 }}
           volumeMounts:
             - {name: runtime, mountPath: /runtime, readOnly: true}
             - {name: network-quality-metrics, mountPath: /metrics}

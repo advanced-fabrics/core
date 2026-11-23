@@ -123,6 +123,10 @@ advancedFabric:
     timeoutSeconds: 2
     samples: 3
     maximumConcurrency: 24
+    # Each host/pod collector runs independent sample windows and two TLS workers.
+    resources:
+      requests: {cpu: 100m, memory: 64Mi}
+      limits: {cpu: "2", memory: 256Mi}
     freshnessSeconds: 120
     minimumHistorySamples: 3
     minimumCoverageRatio: 1.0
