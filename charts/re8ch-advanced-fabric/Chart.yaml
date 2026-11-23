@@ -2,8 +2,8 @@ apiVersion: v2
 name: advanced-fabric
 description: Public, observe-first Cilium and FRR fabric control and network evidence API
 type: application
-version: 1.0.0-rc.15
-appVersion: "1.0.0-rc.15"
+version: 1.0.0-rc.16
+appVersion: "1.0.0-rc.16"
 kubeVersion: ">=1.30.0-0"
 home: https://advfab.org
 sources:
@@ -21,6 +21,8 @@ annotations:
   artifacthub.io/operatorCapabilities: deep insights
   artifacthub.io/containsSecurityUpdates: "false"
   artifacthub.io/changes: |
+    - kind: added
+      description: Expose exact scoped Service TLS evidence and independent freshness on the existing observation API.
     - kind: added
       description: Publish scoped Cilium allocation and bounded anonymous TLS transfer evidence, including fresh Among-discovered endpoints.
     - kind: fixed

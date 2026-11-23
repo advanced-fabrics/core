@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.0.0-rc.16
+
+- Extend the existing observation API with exact namespaced Service snapshots
+  and an optional Service subject list using formal v1alpha2 assessments.
+- Preserve observed scope, references, transfer evidence and raw conditions;
+  independently report freshness, deletion, unknown subjects and truncated lists.
+- Keep Node API compatibility, existing permissions and the certified rc.15
+  artifact unchanged. No new registry, controller or CLI binary.
+
 ## 1.0.0-rc.15
 
 - Observe current CiliumNode pool allocations separately from declared topology;
