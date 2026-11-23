@@ -182,7 +182,7 @@ def tls_transfer(target, padding, phase_deadline):
               "targetConfigurationDigest": tls_target_configuration_digest(target),
               "paddingBytes": padding, "startedAt": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
               "success": False, "state": "Failed", "category": "transport", "error": "",
-              "statusCode": None, "connectMs": None, "handshakeMs": None, "requestResponseMs": None,
+              "statusCode": None, "preparationMs": None, "connectMs": None, "handshakeMs": None, "requestResponseMs": None,
               "requestBytes": 0, "responseBytes": 0, "bodyBytes": 0}
     client = None
 
@@ -219,10 +219,12 @@ def tls_transfer(target, padding, phase_deadline):
         family = socket.AF_INET6 if ipaddress.ip_address(target["endpoint"]).version == 6 else socket.AF_INET
         client = socket.socket(family, socket.SOCK_STREAM)
         remaining()
+        connecting = time.monotonic()
+        result["preparationMs"] = round((connecting - started) * 1000, 3)
         client.connect((target["endpoint"], target["port"]))
         result["sourceAddress"], result["sourcePort"] = client.getsockname()[:2]
         connected = time.monotonic()
-        result["connectMs"] = round((connected - started) * 1000, 3)
+        result["connectMs"] = round((connected - connecting) * 1000, 3)
         client = context.wrap_socket(client, server_hostname=target["serverName"], do_handshake_on_connect=False)
         remaining()
         client.do_handshake()
@@ -510,23 +512,38 @@ def snapshot():
         return {"measurementDefinitionId": "path-quality-v1", "pathRole": "current",
                 "sourceNode": NODE, "sourcePlane": PLANE, "targetNode": target["node"],
                 "targetPlane": destination_plane, **measure(target[key])}
-    with concurrent.futures.ThreadPoolExecutor(max_workers=max(1, min(MAX_CONCURRENCY, len(specifications)))) as pool:
-        paths = list(pool.map(measure_path, specifications))
+    def measure_paths():
+        with concurrent.futures.ThreadPoolExecutor(max_workers=max(1, min(MAX_CONCURRENCY, len(specifications)))) as pool:
+            return list(pool.map(measure_path, specifications))
     def measure_alternative(alternative):
         return {"measurementDefinitionId": "path-quality-v1", "pathRole": "alternative", "feasible": True,
                 "pathId": alternative.get("name"), "sourceNode": NODE, "sourcePlane": PLANE,
                 "targetNode": alternative["targetNode"], "targetPlane": alternative["targetPlane"],
                 **measure(alternative["address"])}
-    with concurrent.futures.ThreadPoolExecutor(max_workers=max(1, min(MAX_CONCURRENCY, len(alternatives)))) as pool:
-        paths.extend(pool.map(measure_alternative, alternatives))
+    def measure_alternatives():
+        with concurrent.futures.ThreadPoolExecutor(max_workers=max(1, min(MAX_CONCURRENCY, len(alternatives)))) as pool:
+            return list(pool.map(measure_alternative, alternatives))
     dns_jobs = [(role, server, protocol) for role, server in dns_servers
                 if server and server != "None" for protocol in ("udp", "tcp")]
     def measure_dns(job):
         role, server, protocol = job
         return dns_measure(server, protocol, role=role)
-    with concurrent.futures.ThreadPoolExecutor(max_workers=max(1, min(MAX_CONCURRENCY, len(dns_jobs)))) as pool:
-        dns = list(pool.map(measure_dns, dns_jobs))
-    doh = [doh_measure(DOH_URL)] if DOH_URL else []
+    def measure_dns_servers():
+        with concurrent.futures.ThreadPoolExecutor(max_workers=max(1, min(MAX_CONCURRENCY, len(dns_jobs)))) as pool:
+            return list(pool.map(measure_dns, dns_jobs))
+    def measure_doh():
+        return [doh_measure(DOH_URL)] if DOH_URL else []
+    # These phases observe independent paths. Serial execution adds each
+    # failed-path sample window and delays every Service TLS publication.
+    # Keep the existing per-phase concurrency and sample budgets, but wait
+    # for their maximum duration rather than their sum.
+    with concurrent.futures.ThreadPoolExecutor(max_workers=4) as phases:
+        current = phases.submit(measure_paths)
+        alternative = phases.submit(measure_alternatives)
+        dns_future = phases.submit(measure_dns_servers)
+        doh_future = phases.submit(measure_doh)
+        paths = current.result() + alternative.result()
+        dns, doh = dns_future.result(), doh_future.result()
     # Generic path/DNS work can take most of an advertisement TTL. Read the
     # current plan immediately before TLS, reusing discover's reviewed AF fact.
     tls_plan = assigned_tasks()[2] if fabric.get("spec", {}).get("networkQuality", {}).get("amongTlsTargets") else None

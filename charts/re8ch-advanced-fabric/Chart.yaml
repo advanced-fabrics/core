@@ -2,8 +2,8 @@ apiVersion: v2
 name: advanced-fabric
 description: Public, observe-first Cilium and FRR fabric control and network evidence API
 type: application
-version: 1.0.0-rc.16
-appVersion: "1.0.0-rc.16"
+version: 1.0.0-rc.17
+appVersion: "1.0.0-rc.17"
 kubeVersion: ">=1.30.0-0"
 home: https://advfab.org
 sources:
@@ -21,6 +21,10 @@ annotations:
   artifacthub.io/operatorCapabilities: deep insights
   artifacthub.io/containsSecurityUpdates: "false"
   artifacthub.io/changes: |
+    - kind: fixed
+      description: Make host and pod collector resources configurable with CPU burst capacity for TLS and concurrent sample windows.
+    - kind: fixed
+      description: Measure independent path, DNS and DoH sample windows concurrently before refreshing the Service TLS plan.
     - kind: added
       description: Expose exact scoped Service TLS evidence and independent freshness on the existing observation API.
     - kind: added

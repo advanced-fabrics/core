@@ -121,6 +121,27 @@ class AmongTLSContract(unittest.TestCase):
         self.assertEqual(targets, [])
         self.assertEqual(failures[0]['reason'], 'AmongSourceScopeInvalid')
         self.assertEqual(self.calls, [])
+    def test_snapshot_independent_phases_overlap_before_fresh_tls_plan(self):
+        entered = {name: threading.Event() for name in ('current', 'alternative', 'dns', 'doh')}
+        def finish(name):
+            entered[name].set()
+            for event in entered.values():
+                self.assertTrue(event.wait(2), 'independent phase was blocked behind another sample window')
+            return {'attempts': 1, 'successes': 1, 'p95Ms': 1}
+        def measure(address):
+            return finish('current' if address == '192.0.2.1' else 'alternative')
+        ns = load('conformance-probe.py', {'snapshot'})
+        ns.update(discover=lambda: ([{'node': 'target', 'hostIP': '192.0.2.1'}],
+            [('authoritative', '192.0.2.53')],
+            [{'name': 'alternative', 'targetNode': 'target', 'targetPlane': 'host', 'address': '192.0.2.2'}], {}),
+            assigned_tasks=lambda: (7, [], None), concurrent=concurrent, measure=measure,
+            dns_measure=lambda *args, **kwargs: finish('dns'), doh_measure=lambda _: finish('doh'),
+            measure_tls_targets=lambda *args: [], DOH_URL='fixture', MAX_CONCURRENCY=2,
+            INTERVAL=30, HISTORY=[], HISTORY_SIZE=3, history_summary=lambda _: {}, NODE='r640', PLANE='pod')
+        result = ns['snapshot']()
+        self.assertEqual(len(result['paths']), 2)
+        self.assertEqual(len(result['dns']), 2)
+        self.assertEqual(len(result['doh']), 1)
     def test_snapshot_refreshes_plan_after_slow_generic_phase_reusing_discovered_af(self):
         targets, _ = self.resolve()
         plan = {'generatedAt': AT, 'tlsValidUntil': NOW + 10,

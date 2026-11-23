@@ -21,7 +21,7 @@ Public defaults are disabled and contain no private inventory or credentials.
 ```sh
 helm upgrade --install advanced-fabric \
   oci://ghcr.io/advanced-fabrics/charts/advanced-fabric \
-  --version 1.0.0-rc.16 \
+  --version 1.0.0-rc.17 \
   --namespace advanced-fabric --create-namespace
 ```
 
@@ -35,10 +35,19 @@ advancedFabric:
     enabled: true
 ```
 
+Conformance collectors run independent current-path, alternative-path, DNS and
+DoH sample windows concurrently, then refresh the Service TLS plan. A failed
+sample window therefore contributes its duration once instead of delaying
+Service publication by the sum of four windows. The per-phase sample counts,
+timeouts and concurrency settings remain unchanged. Collectors reserve 100m CPU
+and 64 MiB with burst limits of two CPUs and 256 MiB; configure
+`advancedFabric.networkQuality.resources` for the actual node capacity. Check
+observed cycle duration and fresh Service evidence after deployment.
+
 ```sh
 helm upgrade --install advanced-fabric \
   oci://ghcr.io/advanced-fabrics/charts/advanced-fabric \
-  --version 1.0.0-rc.16 \
+  --version 1.0.0-rc.17 \
   --namespace advanced-fabric --create-namespace \
   --values my-values.yaml
 

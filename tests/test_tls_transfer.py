@@ -118,6 +118,9 @@ class TLSTransferTest(unittest.TestCase):
         self.assertNotIn(b'Cookie:', server.request)
         self.assertIn(b'X-Diagnostic-Padding: ' + b'x' * 2048, server.request)
         self.assertEqual(result['state'], 'Succeeded')
+        self.assertIsNotNone(result['preparationMs'])
+        self.assertGreaterEqual(result['preparationMs'], 0)
+        self.assertGreaterEqual(result['totalMs'], result['preparationMs'] + result['connectMs'] - .01)
 
     def test_wrong_sni_and_untrusted_ca_are_failures(self):
         for changes in ({'serverName': 'wrong.example'}, {'caFile': None}):
