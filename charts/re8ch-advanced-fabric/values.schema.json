@@ -138,6 +138,10 @@
             }
           }
         },
+        "serviceTrafficWindow": {
+          "type": "object",
+          "properties": {"resources": {"type": "object", "description": "Kubernetes resources for the streaming Hubble window collector."}}
+        },
         "networkQuality": {
           "type": "object",
           "required": ["enabled", "enforcementEnabled", "victoriaMetricsServiceScrape", "intervalSeconds", "timeoutSeconds", "samples", "freshnessSeconds", "minimumCoverageRatio", "maximumLossRatio", "maximumRegionalP95Ms", "maximumCrossRegionP95Ms", "dns", "doh"],

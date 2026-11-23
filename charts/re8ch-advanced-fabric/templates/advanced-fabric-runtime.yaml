@@ -243,10 +243,10 @@ spec:
             - {name: NODE_NAME, valueFrom: {fieldRef: {fieldPath: spec.nodeName}}}
             - {name: SERVICE_TRAFFIC_WINDOW_SECONDS, value: "15"}
           securityContext: {privileged: true}
-          # Busy clusters can briefly hold a full Hubble service-flow window
-          # while jq materializes the next snapshot. 64Mi caused repeatable
-          # OOMKills on otherwise healthy control-plane nodes.
-          resources: {requests: {cpu: 10m, memory: 32Mi}, limits: {cpu: 250m, memory: 128Mi}}
+          # Streaming aggregation is independent of window event count. Leave
+          # headroom for the Hubble client and unusually large individual events.
+          resources:
+{{ toYaml .Values.advancedFabric.serviceTrafficWindow.resources | indent 12 }}
           volumeMounts:
             - {name: runtime, mountPath: /runtime, readOnly: true}
             - {name: host, mountPath: /host, readOnly: true}

@@ -21,7 +21,7 @@ Public defaults are disabled and contain no private inventory or credentials.
 ```sh
 helm upgrade --install advanced-fabric \
   oci://ghcr.io/advanced-fabrics/charts/advanced-fabric \
-  --version 1.0.0-rc.17 \
+  --version 1.0.0-rc.18 \
   --namespace advanced-fabric --create-namespace
 ```
 
@@ -44,10 +44,28 @@ and 64 MiB with burst limits of two CPUs and 256 MiB; configure
 `advancedFabric.networkQuality.resources` for the actual node capacity. Check
 observed cycle duration and fresh Service evidence after deployment.
 
+The node-local Hubble service-traffic collector aggregates each JSON event as it
+arrives; it retains counters rather than a complete flow window. Completed
+timeout windows preserve the existing flow/HTTP-request schema. Invalid,
+truncated, lost-event or unknown-event streams leave the previous observation
+unchanged so its normal freshness deadline can expire. An empty, successfully
+completed window is a measured zero; unavailable collection is not.
+
+`advancedFabric.serviceTrafficWindow.resources` configures only this collector
+(defaults: request 100m CPU/128 MiB, limit two CPUs/1 GiB). This is a capacity
+budget for Hubble, jq and individual event size, not a measured universal peak
+or a routing policy. A real-jq regression feeds over 200 MB without sampling or
+an event cap and checks that peak RSS does not grow with the complete window;
+production acceptance still requires fresh observations and no OOM restarts on
+the actual node. The `requests` counter includes only observed ingress HTTP L7
+`REQUEST` events, excluding `RESPONSE` and `SAMPLE`. Unknown HTTP event types
+leave the old observation to expire. This is not total business QPS when L7
+visibility is incomplete. Neither counter establishes network-path health.
+
 ```sh
 helm upgrade --install advanced-fabric \
   oci://ghcr.io/advanced-fabrics/charts/advanced-fabric \
-  --version 1.0.0-rc.17 \
+  --version 1.0.0-rc.18 \
   --namespace advanced-fabric --create-namespace \
   --values my-values.yaml
 

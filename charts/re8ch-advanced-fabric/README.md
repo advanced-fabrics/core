@@ -134,6 +134,18 @@ upgrades and scaling independent of historical DNS objects.
 
 ## Development
 
+`advancedFabric.serviceTrafficWindow.resources` sets the node-local Hubble
+collector's requests and limits; it is chart-only and is omitted from the
+AdvancedFabric CR. The collector streams events into constant-count state,
+preserving the flow-event/HTTP-request dimensions. Only observed ingress HTTP
+`REQUEST` events count as requests; responses and samples do not. This is not
+total business QPS. Parse errors, reported event loss, unknown event types and
+incomplete follow windows do not refresh the previous observation.
+Defaults reserve 100m CPU/128 MiB and allow two CPUs/1 GiB for the client, parser
+and individual events. These are capacity estimates; verify actual memory,
+restart counts and observation freshness after rollout. No event cap, sampling
+or route mutation is introduced.
+
 ```sh
 helm lint charts/advanced-fabric
 helm template test charts/advanced-fabric >/dev/null

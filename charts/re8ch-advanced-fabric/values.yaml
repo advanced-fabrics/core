@@ -112,6 +112,11 @@ advancedFabric:
     service: {name: advanced-fabric-dns, clusterIP: ""}
     doh: {serviceName: advanced-fabric-doh, caSecretName: advanced-fabric-doh-tls}
     migration: {phase: shadow}
+  # Chart-only collector resources, not an AdvancedFabric routing policy.
+  serviceTrafficWindow:
+    resources:
+      requests: {cpu: 100m, memory: 128Mi}
+      limits: {cpu: "2", memory: 1Gi}
   networkQuality:
     tlsTargets: []
     amongTlsTargets: []

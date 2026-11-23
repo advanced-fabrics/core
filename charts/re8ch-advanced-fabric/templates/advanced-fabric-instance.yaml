@@ -3,5 +3,5 @@ apiVersion: {{ .Values.advancedFabric.apiGroup }}/v1alpha1
 kind: AdvancedFabric
 metadata: {name: {{ .Values.advancedFabric.instanceName }}}
 spec:
-{{ toYaml (omit .Values.advancedFabric "enabled" "instanceName" "runtimeNamespace" "apiGroup" "legacyApiGroup") | indent 2 }}
+{{ toYaml (omit .Values.advancedFabric "enabled" "instanceName" "runtimeNamespace" "apiGroup" "legacyApiGroup" "serviceTrafficWindow") | indent 2 }}
 {{- end }}
